@@ -190,7 +190,7 @@ UDP WireGuard-пакетов, endpoint динамически обновляет
 
 ## Дорожная карта (обновляй чекбоксы по ходу работы)
 
-- [ ] Фаза 0: `git init`, каркас модуля (`go.mod`), структура папок по Clean
+- [x] Фаза 0: `git init`, каркас модуля (`go.mod`), структура папок по Clean
       Architecture выше, пустой `cmd/app` с cobra-скелетом.
 - [ ] Фаза 1: domain-слой (Peer, Network, Candidate, Session, Tunnel) + порты
       в `usecase/port` (без реализаций).
