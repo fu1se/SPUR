@@ -420,6 +420,174 @@ func (x *RelayOpenRequest) GetSessionId() string {
 	return ""
 }
 
+// MeshMember mirrors domain.MeshMember on the wire.
+type MeshMember struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	PeerId        string                 `protobuf:"bytes,1,opt,name=peer_id,json=peerId,proto3" json:"peer_id,omitempty"`
+	PublicKey     []byte                 `protobuf:"bytes,2,opt,name=public_key,json=publicKey,proto3" json:"public_key,omitempty"`
+	MeshIp        string                 `protobuf:"bytes,3,opt,name=mesh_ip,json=meshIp,proto3" json:"mesh_ip,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MeshMember) Reset() {
+	*x = MeshMember{}
+	mi := &file_control_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MeshMember) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MeshMember) ProtoMessage() {}
+
+func (x *MeshMember) ProtoReflect() protoreflect.Message {
+	mi := &file_control_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MeshMember.ProtoReflect.Descriptor instead.
+func (*MeshMember) Descriptor() ([]byte, []int) {
+	return file_control_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *MeshMember) GetPeerId() string {
+	if x != nil {
+		return x.PeerId
+	}
+	return ""
+}
+
+func (x *MeshMember) GetPublicKey() []byte {
+	if x != nil {
+		return x.PublicKey
+	}
+	return nil
+}
+
+func (x *MeshMember) GetMeshIp() string {
+	if x != nil {
+		return x.MeshIp
+	}
+	return ""
+}
+
+// JoinNetworkRequest asks the server to join (or auto-create) a mesh
+// network by name. There is no invite-token gating yet (see
+// usecase.JoinNetwork's doc comment) — Phase 7.
+type JoinNetworkRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	NetworkName   string                 `protobuf:"bytes,1,opt,name=network_name,json=networkName,proto3" json:"network_name,omitempty"`
+	PublicKey     []byte                 `protobuf:"bytes,2,opt,name=public_key,json=publicKey,proto3" json:"public_key,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *JoinNetworkRequest) Reset() {
+	*x = JoinNetworkRequest{}
+	mi := &file_control_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *JoinNetworkRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*JoinNetworkRequest) ProtoMessage() {}
+
+func (x *JoinNetworkRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_control_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use JoinNetworkRequest.ProtoReflect.Descriptor instead.
+func (*JoinNetworkRequest) Descriptor() ([]byte, []int) {
+	return file_control_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *JoinNetworkRequest) GetNetworkName() string {
+	if x != nil {
+		return x.NetworkName
+	}
+	return ""
+}
+
+func (x *JoinNetworkRequest) GetPublicKey() []byte {
+	if x != nil {
+		return x.PublicKey
+	}
+	return nil
+}
+
+type JoinNetworkResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Cidr          string                 `protobuf:"bytes,1,opt,name=cidr,proto3" json:"cidr,omitempty"`
+	Members       []*MeshMember          `protobuf:"bytes,2,rep,name=members,proto3" json:"members,omitempty"` // includes the caller itself
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *JoinNetworkResponse) Reset() {
+	*x = JoinNetworkResponse{}
+	mi := &file_control_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *JoinNetworkResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*JoinNetworkResponse) ProtoMessage() {}
+
+func (x *JoinNetworkResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_control_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use JoinNetworkResponse.ProtoReflect.Descriptor instead.
+func (*JoinNetworkResponse) Descriptor() ([]byte, []int) {
+	return file_control_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *JoinNetworkResponse) GetCidr() string {
+	if x != nil {
+		return x.Cidr
+	}
+	return ""
+}
+
+func (x *JoinNetworkResponse) GetMembers() []*MeshMember {
+	if x != nil {
+		return x.Members
+	}
+	return nil
+}
+
 var File_control_proto protoreflect.FileDescriptor
 
 const file_control_proto_rawDesc = "" +
@@ -453,7 +621,20 @@ const file_control_proto_rawDesc = "" +
 	"candidates\"1\n" +
 	"\x10RelayOpenRequest\x12\x1d\n" +
 	"\n" +
-	"session_id\x18\x01 \x01(\tR\tsessionIdB<Z:github.com/fu1se/localizator/internal/adapter/controlprotob\x06proto3"
+	"session_id\x18\x01 \x01(\tR\tsessionId\"]\n" +
+	"\n" +
+	"MeshMember\x12\x17\n" +
+	"\apeer_id\x18\x01 \x01(\tR\x06peerId\x12\x1d\n" +
+	"\n" +
+	"public_key\x18\x02 \x01(\fR\tpublicKey\x12\x17\n" +
+	"\amesh_ip\x18\x03 \x01(\tR\x06meshIp\"V\n" +
+	"\x12JoinNetworkRequest\x12!\n" +
+	"\fnetwork_name\x18\x01 \x01(\tR\vnetworkName\x12\x1d\n" +
+	"\n" +
+	"public_key\x18\x02 \x01(\fR\tpublicKey\"[\n" +
+	"\x13JoinNetworkResponse\x12\x12\n" +
+	"\x04cidr\x18\x01 \x01(\tR\x04cidr\x120\n" +
+	"\amembers\x18\x02 \x03(\v2\x16.control.v1.MeshMemberR\amembersB<Z:github.com/fu1se/localizator/internal/adapter/controlprotob\x06proto3"
 
 var (
 	file_control_proto_rawDescOnce sync.Once
@@ -467,7 +648,7 @@ func file_control_proto_rawDescGZIP() []byte {
 	return file_control_proto_rawDescData
 }
 
-var file_control_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_control_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
 var file_control_proto_goTypes = []any{
 	(*RegisterRequest)(nil),           // 0: control.v1.RegisterRequest
 	(*RegisterResponse)(nil),          // 1: control.v1.RegisterResponse
@@ -477,15 +658,19 @@ var file_control_proto_goTypes = []any{
 	(*AwaitCandidatesRequest)(nil),    // 5: control.v1.AwaitCandidatesRequest
 	(*AwaitCandidatesResponse)(nil),   // 6: control.v1.AwaitCandidatesResponse
 	(*RelayOpenRequest)(nil),          // 7: control.v1.RelayOpenRequest
+	(*MeshMember)(nil),                // 8: control.v1.MeshMember
+	(*JoinNetworkRequest)(nil),        // 9: control.v1.JoinNetworkRequest
+	(*JoinNetworkResponse)(nil),       // 10: control.v1.JoinNetworkResponse
 }
 var file_control_proto_depIdxs = []int32{
 	2, // 0: control.v1.PublishCandidatesRequest.candidates:type_name -> control.v1.Candidate
 	2, // 1: control.v1.AwaitCandidatesResponse.candidates:type_name -> control.v1.Candidate
-	2, // [2:2] is the sub-list for method output_type
-	2, // [2:2] is the sub-list for method input_type
-	2, // [2:2] is the sub-list for extension type_name
-	2, // [2:2] is the sub-list for extension extendee
-	0, // [0:2] is the sub-list for field type_name
+	8, // 2: control.v1.JoinNetworkResponse.members:type_name -> control.v1.MeshMember
+	3, // [3:3] is the sub-list for method output_type
+	3, // [3:3] is the sub-list for method input_type
+	3, // [3:3] is the sub-list for extension type_name
+	3, // [3:3] is the sub-list for extension extendee
+	0, // [0:3] is the sub-list for field type_name
 }
 
 func init() { file_control_proto_init() }
@@ -499,7 +684,7 @@ func file_control_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_control_proto_rawDesc), len(file_control_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   8,
+			NumMessages:   11,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

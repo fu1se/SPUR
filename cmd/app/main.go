@@ -30,11 +30,12 @@ func main() {
 	defer stop()
 
 	root := cli.NewRootCommand(cli.Dependencies{
-		RunServer: runServer,
-		Register:  register,
-		Connect:   connect,
-		Expose:    expose,
-		Whoami:    whoami,
+		RunServer:   runServer,
+		Register:    register,
+		Connect:     connect,
+		Expose:      expose,
+		Whoami:      whoami,
+		JoinNetwork: joinNetwork,
 	})
 
 	if err := root.ExecuteContext(ctx); err != nil {
@@ -70,6 +71,7 @@ func runServer(ctx context.Context, controlAddr, stunAddr string) error {
 	}
 
 	peers := memory.NewPeerRepository()
+	networks := memory.NewNetworkRepository()
 	candidateBroker := memory.NewCandidateBroker()
 	relayBroker := memory.NewRelayBroker()
 	srv := &controlserver.Server{
@@ -77,6 +79,7 @@ func runServer(ctx context.Context, controlAddr, stunAddr string) error {
 		PublishCandidates: usecase.PublishCandidates{Store: candidateBroker},
 		AwaitCandidates:   usecase.AwaitCandidates{Store: candidateBroker},
 		RelayFallback:     usecase.RelayFallback{Broker: relayBroker},
+		JoinNetwork:       usecase.JoinNetwork{Networks: networks},
 	}
 
 	g, gctx := errgroup.WithContext(ctx)
@@ -127,4 +130,36 @@ func whoami(identityPath string) (string, error) {
 		return "", fmt.Errorf("app: load identity: %w", err)
 	}
 	return string(domain.DerivePeerID(pub)), nil
+}
+
+// joinNetwork loads (or creates) the local identity and joins a mesh
+// network on the server, returning its current membership. Control-plane
+// only — see cli.Dependencies.JoinNetwork's doc comment.
+func joinNetwork(ctx context.Context, serverAddr, networkName, identityPath string) (cli.JoinNetworkResult, error) {
+	resolvedIdentityPath, err := resolveIdentityPath(identityPath)
+	if err != nil {
+		return cli.JoinNetworkResult{}, err
+	}
+	pub, err := infra.LoadOrCreateIdentity(resolvedIdentityPath)
+	if err != nil {
+		return cli.JoinNetworkResult{}, fmt.Errorf("app: load identity: %w", err)
+	}
+
+	client, err := controlclient.Dial(ctx, serverAddr, infra.InsecureClientTLSConfig(controlproto.ALPN), infra.DefaultQUICConfig())
+	if err != nil {
+		return cli.JoinNetworkResult{}, err
+	}
+	defer client.Close()
+
+	network, err := client.JoinNetwork(ctx, networkName, pub)
+	if err != nil {
+		return cli.JoinNetworkResult{}, err
+	}
+
+	members := make([]cli.MeshMemberResult, 0, len(network.Members))
+	for _, m := range network.Members {
+		members = append(members, cli.MeshMemberResult{PeerID: string(m.PeerID), MeshIP: m.MeshIP.String()})
+	}
+
+	return cli.JoinNetworkResult{CIDR: network.CIDR.String(), Members: members}, nil
 }

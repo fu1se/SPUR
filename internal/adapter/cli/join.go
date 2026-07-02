@@ -18,7 +18,9 @@ func newJoinCommand() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			_ = serverAddr
 			_ = network
-			return errors.New("join: не реализовано (Фаза 6)")
+			return errors.New("join: координация сети реализована (см. `app join-network`), " +
+				"но TUN/wireguard-go пока не подключены — не тестировалось живьём " +
+				"без sudo/CAP_NET_ADMIN, см. CLAUDE.md")
 		},
 	}
 

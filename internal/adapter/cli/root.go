@@ -23,6 +23,20 @@ type RegisterResult struct {
 	ObservedAddress string
 }
 
+// MeshMemberResult is one member of a mesh network, as reported back to
+// the CLI layer.
+type MeshMemberResult struct {
+	PeerID string
+	MeshIP string
+}
+
+// JoinNetworkResult is what a successful mesh network join reports back to
+// the CLI layer.
+type JoinNetworkResult struct {
+	CIDR    string
+	Members []MeshMemberResult
+}
+
 // Dependencies holds the wired entrypoints each subcommand calls into.
 // Every field is populated in cmd/app; commands never know what concrete
 // adapters sit behind them.
@@ -55,6 +69,12 @@ type Dependencies struct {
 	// ID, without any network access — the bootstrap step for learning
 	// your own ID before sharing it with a counterpart out-of-band.
 	Whoami func(identityPath string) (string, error)
+
+	// JoinNetwork registers with a mesh network on the server and returns
+	// its current membership. Data-plane (TUN/wireguard-go) is not wired
+	// up yet — see CLAUDE.md's Phase 6 note — so this only exercises the
+	// control-plane coordination, the same way Register does for Phase 2.
+	JoinNetwork func(ctx context.Context, serverAddr, networkName, identityPath string) (JoinNetworkResult, error)
 }
 
 // NewRootCommand builds the root cobra command with all subcommands wired
@@ -75,6 +95,7 @@ func NewRootCommand(deps Dependencies) *cobra.Command {
 		newConnectCommand(deps),
 		newExposeCommand(deps),
 		newJoinCommand(),
+		newJoinNetworkCommand(deps),
 	)
 
 	return root
