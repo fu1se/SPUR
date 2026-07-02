@@ -21,7 +21,13 @@ import (
 // idle periods between bursts of tunnel traffic.
 func DefaultQUICConfig() *quic.Config {
 	return &quic.Config{
-		MaxIdleTimeout:  5 * time.Minute,
-		KeepAlivePeriod: 15 * time.Second,
+		// Default is 5s, tight enough to occasionally misfire under real
+		// load: mesh mode (Phase 6) opens several concurrent QUIC dials
+		// (the network-join connection plus one rendezvous connection per
+		// peer) competing for CPU, and this got hit during live testing
+		// with two `app join` processes running at once.
+		HandshakeIdleTimeout: 30 * time.Second,
+		MaxIdleTimeout:       5 * time.Minute,
+		KeepAlivePeriod:      15 * time.Second,
 	}
 }

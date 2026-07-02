@@ -46,45 +46,75 @@ type incomingPacket struct {
 }
 
 // Bind implements conn.Bind. Peers are added dynamically via AddPeer as
-// their tunnels come up; Send/receive to a peer not yet added fails (Send)
-// or simply never happens (receive).
+// their tunnels come up.
+//
+// wireguard-go calls Close then Open on its Bind every time listen_port is
+// set via IpcSet (see device/uapi.go's handling of "listen_port", which
+// unconditionally calls BindUpdate) — including during the very first
+// configuration, before any peer has even been added: BuildDeviceConfig
+// sets listen_port=0 once, and Device.Up() triggers another such cycle.
+// Open and Close here are therefore scoped to the *receive interface*
+// (ReceiveFuncs) only, gated by a done channel recreated on every Open —
+// they must not tear down peer streams. The first version closed the one
+// permanent gating channel in Close and never reopened it, so every peer
+// silently went unreachable the moment the interface came up — this
+// comment is here so nobody "simplifies" that back in.
 type Bind struct {
 	mu      sync.Mutex
 	streams map[domain.PeerID]port.Stream
-	stops   map[domain.PeerID]chan struct{}
 
 	incoming chan incomingPacket
-	done     chan struct{}
-	closeMu  sync.Mutex
+
+	openMu sync.Mutex
+	done   chan struct{}
 }
 
 func NewBind() *Bind {
 	return &Bind{
 		streams:  make(map[domain.PeerID]port.Stream),
-		stops:    make(map[domain.PeerID]chan struct{}),
 		incoming: make(chan incomingPacket, 128),
-		done:     make(chan struct{}),
 	}
 }
 
 // AddPeer registers stream as peer's transport and starts reading framed
-// packets from it in the background. stream must already be established
-// (see EstablishSession) and dedicated solely to WireGuard traffic.
-func (b *Bind) AddPeer(peer domain.PeerID, stream port.Stream) {
+// packets from it in the background, for the life of stream — independent
+// of any Bind Open/Close cycle. stream must already be established (see
+// EstablishSession) and dedicated solely to WireGuard traffic.
+//
+// isDialer must match whatever picked the transport role for stream
+// (domain.IsDialer). It's not just bookkeeping: QUIC/yamux streams aren't
+// visible to the peer until something is actually written to them, but
+// WireGuard doesn't write anything on its own until it has a real packet
+// to send — neither side proactively initiates just because a peer was
+// configured. Left alone, the dialer's stream would sit open-but-silent
+// forever and the listener's AcceptStream would never return, each
+// waiting on the other. So the dialer primes the stream with one empty
+// frame immediately; the listener's read loop below discards empty
+// frames as a no-op rather than forwarding them into WireGuard.
+func (b *Bind) AddPeer(peer domain.PeerID, stream port.Stream, isDialer bool) error {
+	if isDialer {
+		if err := writeFrame(stream, nil); err != nil {
+			return fmt.Errorf("wgmesh: prime stream to %s: %w", peer, err)
+		}
+	}
+
 	b.mu.Lock()
 	b.streams[peer] = stream
-	stop := make(chan struct{})
-	b.stops[peer] = stop
 	b.mu.Unlock()
 
-	go b.readLoop(peer, stream, stop)
+	go b.readLoop(peer, stream)
+	return nil
 }
 
-func (b *Bind) readLoop(peer domain.PeerID, stream port.Stream, stop chan struct{}) {
+func (b *Bind) readLoop(peer domain.PeerID, stream port.Stream) {
 	for {
 		size, err := readFrameLength(stream)
 		if err != nil {
 			return
+		}
+
+		if size == 0 {
+			continue // priming frame (see AddPeer) — not a real packet
 		}
 
 		buf := make([]byte, size)
@@ -92,13 +122,11 @@ func (b *Bind) readLoop(peer domain.PeerID, stream port.Stream, stop chan struct
 			return
 		}
 
-		select {
-		case b.incoming <- incomingPacket{data: buf, ep: Endpoint{Peer: peer}}:
-		case <-stop:
-			return
-		case <-b.done:
-			return
-		}
+		// Deliberately unconditional: if nothing is currently reading
+		// (Bind momentarily between an Open/Close cycle), this just
+		// backpressures until the buffer has room or a new receive
+		// session starts draining it again.
+		b.incoming <- incomingPacket{data: buf, ep: Endpoint{Peer: peer}}
 	}
 }
 
@@ -114,18 +142,34 @@ func readFrameLength(r io.Reader) (uint16, error) {
 	return size, nil
 }
 
+func writeFrame(w io.Writer, payload []byte) error {
+	var lenBuf [2]byte
+	binary.BigEndian.PutUint16(lenBuf[:], uint16(len(payload)))
+	if _, err := w.Write(lenBuf[:]); err != nil {
+		return err
+	}
+	if len(payload) == 0 {
+		return nil
+	}
+	_, err := w.Write(payload)
+	return err
+}
+
 func (b *Bind) Open(_ uint16) ([]conn.ReceiveFunc, uint16, error) {
+	b.openMu.Lock()
+	defer b.openMu.Unlock()
+
+	done := make(chan struct{})
+	b.done = done
+
 	receive := func(packets [][]byte, sizes []int, eps []conn.Endpoint) (int, error) {
 		select {
-		case p, ok := <-b.incoming:
-			if !ok {
-				return 0, net.ErrClosed
-			}
+		case p := <-b.incoming:
 			n := copy(packets[0], p.data)
 			sizes[0] = n
 			eps[0] = p.ep
 			return 1, nil
-		case <-b.done:
+		case <-done:
 			return 0, net.ErrClosed
 		}
 	}
@@ -133,20 +177,16 @@ func (b *Bind) Open(_ uint16) ([]conn.ReceiveFunc, uint16, error) {
 }
 
 func (b *Bind) Close() error {
-	b.closeMu.Lock()
-	defer b.closeMu.Unlock()
+	b.openMu.Lock()
+	defer b.openMu.Unlock()
 
+	if b.done == nil {
+		return nil
+	}
 	select {
 	case <-b.done:
-		return nil // already closed
 	default:
-	}
-	close(b.done)
-
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	for _, stop := range b.stops {
-		close(stop)
+		close(b.done)
 	}
 	return nil
 }
@@ -170,12 +210,7 @@ func (b *Bind) Send(bufs [][]byte, ep conn.Endpoint) error {
 		if len(buf) > maxPacketSize {
 			return fmt.Errorf("wgmesh: packet too large: %d", len(buf))
 		}
-		var lenBuf [2]byte
-		binary.BigEndian.PutUint16(lenBuf[:], uint16(len(buf)))
-		if _, err := stream.Write(lenBuf[:]); err != nil {
-			return err
-		}
-		if _, err := stream.Write(buf); err != nil {
+		if err := writeFrame(stream, buf); err != nil {
 			return err
 		}
 	}

@@ -20,9 +20,19 @@ type PeerRepository interface {
 
 // NetworkRepository persists mesh network definitions and membership.
 type NetworkRepository interface {
-	Save(ctx context.Context, network domain.Network) error
 	FindByName(ctx context.Context, name string) (domain.Network, error)
 	FindByInviteToken(ctx context.Context, token string) (domain.Network, error)
+
+	// Update atomically loads the network named name (or a zero-value
+	// domain.Network{Name: name} if none exists yet — check
+	// network.CIDR.IsValid() to tell the difference), applies mutate, and
+	// persists the result. Implementations must serialize concurrent
+	// Update calls for the same name: two peers joining at once must
+	// never both observe the same pre-mutation membership list, or one
+	// join silently overwrites the other's (see CLAUDE.md's mesh-join
+	// race note — this replaced a separate Save method for exactly that
+	// reason).
+	Update(ctx context.Context, name string, mutate func(domain.Network) (domain.Network, error)) (domain.Network, error)
 }
 
 // SessionRepository persists in-flight and established tunnel sessions.

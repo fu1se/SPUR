@@ -24,16 +24,25 @@ func TestBind_SendReceiveRoundTrip(t *testing.T) {
 	clientConn, serverConn := net.Pipe()
 
 	bindA := wgmesh.NewBind()
-	bindA.AddPeer(peerID, clientConn)
 	t.Cleanup(func() { bindA.Close() })
 
 	bindB := wgmesh.NewBind()
-	bindB.AddPeer("peer-a", serverConn)
+	require.NoError(t, bindB.AddPeer("peer-a", serverConn, false))
 	t.Cleanup(func() { bindB.Close() })
 
 	fnsB, _, err := bindB.Open(0)
 	require.NoError(t, err)
 	require.Len(t, fnsB, 1)
+
+	// net.Pipe() is fully synchronous (unlike the real QUIC/yamux streams
+	// this stands in for, which buffer): AddPeer's priming write for the
+	// dialer blocks until something reads it, so it must run concurrently
+	// with the listener side actually being ready to read — same as in
+	// real usage, where each side's connectOne runs in its own goroutine
+	// (or process) independently.
+	addPeerErrCh := make(chan error, 1)
+	go func() { addPeerErrCh <- bindA.AddPeer(peerID, clientConn, true) }()
+	require.NoError(t, <-addPeerErrCh) // must finish (incl. registering the stream) before Send below
 
 	payload := []byte("wireguard packet payload")
 	errCh := make(chan error, 1)
@@ -68,6 +77,75 @@ func TestBind_SendReceiveRoundTrip(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, domain.PeerID("peer-a"), ep.Peer)
 
+	require.NoError(t, <-errCh)
+}
+
+// TestBind_SurvivesCloseOpenCycle is a regression test for a real bug
+// found during live TUN testing: wireguard-go calls Close then Open on
+// its Bind every time listen_port is set (device/uapi.go's BindUpdate
+// fires unconditionally), including once during the very first
+// configuration — before any peer was even added. The original
+// implementation closed one permanent gating channel in Close and never
+// recreated it, so every peer went silently unreachable the moment the
+// WireGuard interface came up. A Bind must keep working across repeated
+// Close/Open cycles, the same way a real UDP-backed Bind's socket
+// survives a rebind.
+func TestBind_SurvivesCloseOpenCycle(t *testing.T) {
+	const peerID = domain.PeerID("peer-b")
+
+	clientConn, serverConn := net.Pipe()
+
+	bindA := wgmesh.NewBind()
+	t.Cleanup(func() { bindA.Close() })
+
+	bindB := wgmesh.NewBind()
+	require.NoError(t, bindB.AddPeer("peer-a", serverConn, false))
+	t.Cleanup(func() { bindB.Close() })
+
+	// See TestBind_SendReceiveRoundTrip's comment: the dialer's priming
+	// write blocks on net.Pipe() until the listener side is reading, so
+	// it must run concurrently with (not before) bindB's AddPeer above.
+	addPeerErrCh := make(chan error, 1)
+	go func() { addPeerErrCh <- bindA.AddPeer(peerID, clientConn, true) }()
+	require.NoError(t, <-addPeerErrCh)
+
+	// Simulate the exact sequence wireguard-go runs on every
+	// listen_port= update, including the first one at device startup:
+	// Open, then Close, then Open again — all before any real traffic.
+	_, _, err := bindB.Open(0)
+	require.NoError(t, err)
+	require.NoError(t, bindB.Close())
+	fnsB, _, err := bindB.Open(0)
+	require.NoError(t, err)
+	require.Len(t, fnsB, 1)
+
+	payload := []byte("still alive after rebind")
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- bindA.Send([][]byte{payload}, wgmesh.Endpoint{Peer: peerID})
+	}()
+
+	packets := [][]byte{make([]byte, 2000)}
+	sizes := make([]int, 1)
+	eps := make([]wgconn.Endpoint, 1)
+
+	done := make(chan struct{})
+	var n int
+	var recvErr error
+	go func() {
+		n, recvErr = fnsB[0](packets, sizes, eps)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for received packet after Close/Open cycle")
+	}
+
+	require.NoError(t, recvErr)
+	require.Equal(t, 1, n)
+	require.Equal(t, payload, packets[0][:sizes[0]])
 	require.NoError(t, <-errCh)
 }
 

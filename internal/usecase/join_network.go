@@ -2,7 +2,6 @@ package usecase
 
 import (
 	"context"
-	"errors"
 	"net/netip"
 
 	"github.com/fu1se/localizator/internal/domain"
@@ -26,28 +25,22 @@ type JoinNetwork struct {
 }
 
 func (uc JoinNetwork) Execute(ctx context.Context, networkName string, peer domain.PeerID, pub domain.PublicKey) (domain.Network, error) {
-	network, err := uc.Networks.FindByName(ctx, networkName)
-	switch {
-	case errors.Is(err, domain.ErrNetworkNotFound):
-		network = domain.Network{Name: networkName, CIDR: netip.MustParsePrefix(defaultMeshCIDR)}
-	case err != nil:
-		return domain.Network{}, err
-	}
+	return uc.Networks.Update(ctx, networkName, func(network domain.Network) (domain.Network, error) {
+		if !network.CIDR.IsValid() {
+			network = domain.Network{Name: networkName, CIDR: netip.MustParsePrefix(defaultMeshCIDR)}
+		}
 
-	if network.HasMember(peer) {
+		if network.HasMember(peer) {
+			return network, nil
+		}
+
+		ip, err := network.NextAvailableIP()
+		if err != nil {
+			return domain.Network{}, err
+		}
+		network.Members = append(network.Members, domain.MeshMember{PeerID: peer, PublicKey: pub, MeshIP: ip})
 		return network, nil
-	}
-
-	ip, err := network.NextAvailableIP()
-	if err != nil {
-		return domain.Network{}, err
-	}
-	network.Members = append(network.Members, domain.MeshMember{PeerID: peer, PublicKey: pub, MeshIP: ip})
-
-	if err := uc.Networks.Save(ctx, network); err != nil {
-		return domain.Network{}, err
-	}
-	return network, nil
+	})
 }
 
 // JoinMeshNetwork is the client-side use case: ask the server to join a

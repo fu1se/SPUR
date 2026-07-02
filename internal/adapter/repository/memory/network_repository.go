@@ -8,9 +8,13 @@ import (
 )
 
 // NetworkRepository is a thread-safe in-memory implementation of
-// port.NetworkRepository.
+// port.NetworkRepository. A single mutex serializes all reads and writes
+// — Update needs this to make its read-mutate-write atomic (see the
+// port's doc comment), and a single global lock is a fine MVP choice
+// while everything is in-memory and traffic is low; a per-network lock
+// would be the natural upgrade if this ever becomes a bottleneck.
 type NetworkRepository struct {
-	mu       sync.RWMutex
+	mu       sync.Mutex
 	networks map[string]domain.Network
 }
 
@@ -18,16 +22,9 @@ func NewNetworkRepository() *NetworkRepository {
 	return &NetworkRepository{networks: make(map[string]domain.Network)}
 }
 
-func (r *NetworkRepository) Save(_ context.Context, network domain.Network) error {
+func (r *NetworkRepository) FindByName(_ context.Context, name string) (domain.Network, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.networks[network.Name] = network
-	return nil
-}
-
-func (r *NetworkRepository) FindByName(_ context.Context, name string) (domain.Network, error) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
 	network, ok := r.networks[name]
 	if !ok {
 		return domain.Network{}, domain.ErrNetworkNotFound
@@ -40,4 +37,22 @@ func (r *NetworkRepository) FindByName(_ context.Context, name string) (domain.N
 // joinable by name alone.
 func (r *NetworkRepository) FindByInviteToken(_ context.Context, _ string) (domain.Network, error) {
 	return domain.Network{}, domain.ErrNetworkNotFound
+}
+
+func (r *NetworkRepository) Update(_ context.Context, name string, mutate func(domain.Network) (domain.Network, error)) (domain.Network, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	current, ok := r.networks[name]
+	if !ok {
+		current = domain.Network{Name: name}
+	}
+
+	updated, err := mutate(current)
+	if err != nil {
+		return domain.Network{}, err
+	}
+
+	r.networks[name] = updated
+	return updated, nil
 }

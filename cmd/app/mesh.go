@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/netip"
 	"sync"
+	"time"
 
 	"golang.zx2c4.com/wireguard/device"
 
@@ -16,16 +17,33 @@ import (
 	"github.com/fu1se/localizator/internal/usecase/port"
 )
 
+// meshRefreshInterval bounds how long a peer that joins later can stay
+// invisible to peers that joined earlier. JoinNetwork returns a one-time
+// snapshot of membership, not a live feed — see join's doc comment for why
+// that makes periodic re-polling necessary rather than optional.
+const meshRefreshInterval = 5 * time.Second
+
 // join is "app join": coordinates mesh network membership with the
 // server, establishes a tunnel (P2P or relay, same EstablishSession/
 // adapter/tunnel machinery as port-forward mode) to every other member,
 // dedicates one stream per peer to carrying WireGuard traffic, and routes
 // it through a real TUN interface.
 //
+// Membership is eventually consistent, not instantaneous: JoinNetwork
+// gives back whoever had already joined by the time it's called, so a
+// peer that joins first would never learn about one that joins seconds
+// later without re-checking. This was a real bug found during live
+// testing — two peers joining at nearly the same time, the first one
+// simply never noticed the second existed and sat there with zero
+// tunnels, while the second waited forever for candidates the first
+// never published. join() re-polls JoinNetwork every meshRefreshInterval
+// and connects to whatever's new; already-connected peers are left alone
+// (dev.IpcSet without replace_peers only adds/updates, per WireGuard's
+// UAPI).
+//
 // Requires elevated privileges (root/CAP_NET_ADMIN on Linux): creating the
 // TUN device and assigning it an address changes real system network
-// state. See CLAUDE.md's Phase 6 note for what was and wasn't verified
-// with a live interface.
+// state.
 func join(ctx context.Context, serverAddr, stunAddr, networkName, identityPath string, onSelfID func(string)) error {
 	resolvedIdentityPath, err := resolveIdentityPath(identityPath)
 	if err != nil {
@@ -49,30 +67,12 @@ func join(ctx context.Context, serverAddr, stunAddr, networkName, identityPath s
 		return fmt.Errorf("app: join network: %w", err)
 	}
 
-	var selfMeshIP netip.Addr
-	found := false
-	for _, m := range network.Members {
-		if m.PeerID == self {
-			selfMeshIP = m.MeshIP
-			found = true
-		}
-	}
-	if !found {
+	selfMeshIP, ok := memberMeshIP(network, self)
+	if !ok {
 		return fmt.Errorf("app: server did not return our own mesh membership")
 	}
 
 	bind := wgmesh.NewBind()
-
-	tunnels, peerCfgs := establishMeshPeers(ctx, serverAddr, stunAddr, resolvedIdentityPath, self, network, bind)
-	defer func() {
-		for _, tun := range tunnels {
-			tun.Close()
-		}
-	}()
-	if len(peerCfgs) == 0 && len(network.Members) > 1 {
-		return fmt.Errorf("app: could not reach any of %d other network members", len(network.Members)-1)
-	}
-
 	logger := device.NewLogger(device.LogLevelError, "localizator: ")
 	dev, err := wgmesh.NewDevice(bind, selfMeshIP, network.CIDR.Bits(), logger)
 	if err != nil {
@@ -80,71 +80,132 @@ func join(ctx context.Context, serverAddr, stunAddr, networkName, identityPath s
 	}
 	defer dev.Close()
 
-	if err := dev.IpcSet(wgmesh.BuildUAPIConfig(id.PrivateKey, peerCfgs)); err != nil {
+	if err := dev.IpcSet(wgmesh.BuildDeviceConfig(id.PrivateKey)); err != nil {
 		return fmt.Errorf("app: configure wireguard device: %w", err)
 	}
 	if err := dev.Up(); err != nil {
 		return fmt.Errorf("app: bring up tun device: %w", err)
 	}
 
-	<-ctx.Done()
-	return ctx.Err()
+	mesh := &meshPeers{
+		serverAddr:   serverAddr,
+		stunAddr:     stunAddr,
+		identityPath: resolvedIdentityPath,
+		self:         self,
+		bind:         bind,
+		dev:          dev,
+		connected:    make(map[domain.PeerID]*establishedTunnel),
+	}
+	defer mesh.closeAll()
+
+	mesh.connectToNewMembers(ctx, network)
+
+	ticker := time.NewTicker(meshRefreshInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+			network, err := joinClient.JoinNetwork(ctx, networkName, id.PublicKey)
+			if err != nil {
+				continue // transient — retry next tick
+			}
+			mesh.connectToNewMembers(ctx, network)
+		}
+	}
 }
 
-// establishMeshPeers rendezvous-es with every other member of network
-// concurrently and registers each resulting stream with bind. A peer that
-// can't be reached (punch and relay both fail, or it's simply offline) is
-// skipped rather than failing the whole join — best-effort mesh
-// connectivity, matching how a real VPN mesh degrades when one node is
-// down.
-func establishMeshPeers(
-	ctx context.Context,
-	serverAddr, stunAddr, identityPath string,
-	self domain.PeerID,
-	network domain.Network,
-	bind *wgmesh.Bind,
-) ([]*establishedTunnel, []wgmesh.PeerConfig) {
-	var (
-		mu       sync.Mutex
-		tunnels  []*establishedTunnel
-		peerCfgs []wgmesh.PeerConfig
-		wg       sync.WaitGroup
-	)
+func memberMeshIP(network domain.Network, peer domain.PeerID) (netip.Addr, bool) {
+	for _, m := range network.Members {
+		if m.PeerID == peer {
+			return m.MeshIP, true
+		}
+	}
+	return netip.Addr{}, false
+}
+
+// meshPeers tracks which mesh members already have an established tunnel,
+// so repeated calls to connectToNewMembers only act on newly seen ones,
+// and owns cleanup of every tunnel it opened.
+type meshPeers struct {
+	serverAddr, stunAddr, identityPath string
+	self                               domain.PeerID
+	bind                               *wgmesh.Bind
+	dev                                *wgmesh.Device
+
+	mu        sync.Mutex
+	connected map[domain.PeerID]*establishedTunnel
+}
+
+// connectToNewMembers rendezvous-es (concurrently) with every member of
+// network not already connected, registers each resulting stream with
+// bind, and incrementally adds it to the WireGuard device. A peer that
+// can't be reached right now (punch and relay both fail, or it's offline)
+// is simply skipped — the next tick tries again, so this degrades
+// gracefully rather than failing the whole join.
+func (m *meshPeers) connectToNewMembers(ctx context.Context, network domain.Network) {
+	var wg sync.WaitGroup
 
 	for _, member := range network.Members {
-		if member.PeerID == self {
+		if member.PeerID == m.self {
+			continue
+		}
+
+		m.mu.Lock()
+		_, alreadyConnected := m.connected[member.PeerID]
+		m.mu.Unlock()
+		if alreadyConnected {
 			continue
 		}
 
 		wg.Add(1)
-		go func(m domain.MeshMember) {
+		go func(mem domain.MeshMember) {
 			defer wg.Done()
-
-			tun, _, err := rendezvous(ctx, serverAddr, stunAddr, identityPath, m.PeerID, func(string) {})
-			if err != nil {
-				return
-			}
-
-			stream, err := meshStream(ctx, tun.conn, self, m.PeerID)
-			if err != nil {
-				tun.Close()
-				return
-			}
-			bind.AddPeer(m.PeerID, stream)
-
-			mu.Lock()
-			tunnels = append(tunnels, tun)
-			peerCfgs = append(peerCfgs, wgmesh.PeerConfig{
-				PublicKey: m.PublicKey,
-				AllowedIP: netip.PrefixFrom(m.MeshIP, m.MeshIP.BitLen()),
-				Endpoint:  string(m.PeerID),
-			})
-			mu.Unlock()
+			m.connectOne(ctx, mem)
 		}(member)
 	}
 
 	wg.Wait()
-	return tunnels, peerCfgs
+}
+
+func (m *meshPeers) connectOne(ctx context.Context, mem domain.MeshMember) {
+	tun, _, err := rendezvous(ctx, m.serverAddr, m.stunAddr, m.identityPath, mem.PeerID, func(string) {})
+	if err != nil {
+		return
+	}
+
+	isDialer := domain.IsDialer(m.self, mem.PeerID)
+	stream, err := meshStream(ctx, tun.conn, m.self, mem.PeerID)
+	if err != nil {
+		tun.Close()
+		return
+	}
+	if err := m.bind.AddPeer(mem.PeerID, stream, isDialer); err != nil {
+		tun.Close()
+		return
+	}
+
+	m.mu.Lock()
+	m.connected[mem.PeerID] = tun
+	m.mu.Unlock()
+
+	cfg := wgmesh.PeerConfig{
+		PublicKey: mem.PublicKey,
+		AllowedIP: netip.PrefixFrom(mem.MeshIP, mem.MeshIP.BitLen()),
+		Endpoint:  string(mem.PeerID),
+	}
+	// No listen_port here — see BuildDeviceConfig's doc comment for why
+	// that matters: only adds/updates mem, existing peers untouched.
+	_ = m.dev.IpcSet(wgmesh.BuildPeersConfig([]wgmesh.PeerConfig{cfg}))
+}
+
+func (m *meshPeers) closeAll() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, tun := range m.connected {
+		tun.Close()
+	}
 }
 
 // meshStream opens (if we're the dialer) or accepts (otherwise) the single
