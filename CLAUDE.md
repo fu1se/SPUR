@@ -192,7 +192,7 @@ UDP WireGuard-пакетов, endpoint динамически обновляет
 
 - [x] Фаза 0: `git init`, каркас модуля (`go.mod`), структура папок по Clean
       Architecture выше, пустой `cmd/app` с cobra-скелетом.
-- [ ] Фаза 1: domain-слой (Peer, Network, Candidate, Session, Tunnel) + порты
+- [x] Фаза 1: domain-слой (Peer, Network, Candidate, Session, Tunnel) + порты
       в `usecase/port` (без реализаций).
 - [ ] Фаза 2: control-plane — сервер регистрации пиров + STUN-эндпоинт,
       клиент регистрируется и получает свой public ip:port.
