@@ -371,6 +371,55 @@ func (x *AwaitCandidatesResponse) GetCandidates() []*Candidate {
 	return nil
 }
 
+// RelayOpenRequest is the only framed message on a relay stream: after the
+// server reads it, the rest of the QUIC stream is treated as an opaque
+// byte pipe and spliced to the counterpart's stream for the same session.
+// There is no RelayOpenResponse — bytes just start flowing once both
+// sides of the session have opened their stream.
+type RelayOpenRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SessionId     string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RelayOpenRequest) Reset() {
+	*x = RelayOpenRequest{}
+	mi := &file_control_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RelayOpenRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RelayOpenRequest) ProtoMessage() {}
+
+func (x *RelayOpenRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_control_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RelayOpenRequest.ProtoReflect.Descriptor instead.
+func (*RelayOpenRequest) Descriptor() ([]byte, []int) {
+	return file_control_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *RelayOpenRequest) GetSessionId() string {
+	if x != nil {
+		return x.SessionId
+	}
+	return ""
+}
+
 var File_control_proto protoreflect.FileDescriptor
 
 const file_control_proto_rawDesc = "" +
@@ -401,7 +450,10 @@ const file_control_proto_rawDesc = "" +
 	"\x17AwaitCandidatesResponse\x125\n" +
 	"\n" +
 	"candidates\x18\x01 \x03(\v2\x15.control.v1.CandidateR\n" +
-	"candidatesB<Z:github.com/fu1se/localizator/internal/adapter/controlprotob\x06proto3"
+	"candidates\"1\n" +
+	"\x10RelayOpenRequest\x12\x1d\n" +
+	"\n" +
+	"session_id\x18\x01 \x01(\tR\tsessionIdB<Z:github.com/fu1se/localizator/internal/adapter/controlprotob\x06proto3"
 
 var (
 	file_control_proto_rawDescOnce sync.Once
@@ -415,7 +467,7 @@ func file_control_proto_rawDescGZIP() []byte {
 	return file_control_proto_rawDescData
 }
 
-var file_control_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
+var file_control_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
 var file_control_proto_goTypes = []any{
 	(*RegisterRequest)(nil),           // 0: control.v1.RegisterRequest
 	(*RegisterResponse)(nil),          // 1: control.v1.RegisterResponse
@@ -424,6 +476,7 @@ var file_control_proto_goTypes = []any{
 	(*PublishCandidatesResponse)(nil), // 4: control.v1.PublishCandidatesResponse
 	(*AwaitCandidatesRequest)(nil),    // 5: control.v1.AwaitCandidatesRequest
 	(*AwaitCandidatesResponse)(nil),   // 6: control.v1.AwaitCandidatesResponse
+	(*RelayOpenRequest)(nil),          // 7: control.v1.RelayOpenRequest
 }
 var file_control_proto_depIdxs = []int32{
 	2, // 0: control.v1.PublishCandidatesRequest.candidates:type_name -> control.v1.Candidate
@@ -446,7 +499,7 @@ func file_control_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_control_proto_rawDesc), len(file_control_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   7,
+			NumMessages:   8,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

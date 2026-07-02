@@ -132,12 +132,14 @@ func startControlServer(t *testing.T, ctx context.Context) string {
 	require.NoError(t, err)
 
 	peers := memory.NewPeerRepository()
-	broker := memory.NewCandidateBroker()
+	candidateBroker := memory.NewCandidateBroker()
+	relayBroker := memory.NewRelayBroker()
 
 	srv := &controlserver.Server{
 		RegisterPeer:      usecase.RegisterPeer{Peers: peers},
-		PublishCandidates: usecase.PublishCandidates{Store: broker},
-		AwaitCandidates:   usecase.AwaitCandidates{Store: broker},
+		PublishCandidates: usecase.PublishCandidates{Store: candidateBroker},
+		AwaitCandidates:   usecase.AwaitCandidates{Store: candidateBroker},
+		RelayFallback:     usecase.RelayFallback{Broker: relayBroker},
 	}
 
 	go func() {

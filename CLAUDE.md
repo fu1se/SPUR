@@ -182,7 +182,8 @@ UDP WireGuard-пакетов, endpoint динамически обновляет
     /adapter/controlclient         — control-plane клиент (QUIC), реализует usecase/port.Signaler
     /adapter/controlproto          — protobuf-сообщения, фрейминг и Method-теги control-протокола
     /adapter/stunserver            — RFC5389 STUN Binding responder (отдельный UDP-порт от control-plane)
-    /adapter/repository/memory    — in-memory реализации port.PeerRepository и port.CandidateStore (до SQLite)
+    /adapter/repository/memory    — in-memory реализации port.PeerRepository, port.CandidateStore,
+                                     port.RelayBroker (до SQLite)
     /adapter/cli                  — cobra-команды, транслируют CLI-флаги в вызовы usecase
     /adapter/repository/sqlite    — implements usecase/port.Repository
     /adapter/nat                  — STUN-клиент (та же UDP-сокета, что и punching), host-кандидаты,
@@ -221,6 +222,18 @@ UDP WireGuard-пакетов, endpoint динамически обновляет
 `conn` в `Serve` — единственный вариант без гонки. Держаться этого паттерна
 для любых будущих сетевых адаптеров (relay, tunnel).
 
+### Время жизни relay-стрима (важно для Фаз 5/6)
+
+`port.Relay.OpenChannel` возвращает `io.ReadWriteCloser`, но у реализации
+в `controlclient` это конкретно `*quic.Stream`, открытый на control-канале
+клиента. Стрим живёт ровно столько, сколько жива QUIC-connection, на
+которой он открыт — если закрыть `*controlclient.Client` (control-канал),
+все его стримы, включая relay, обрываются вместе с ним. При построении
+data-plane поверх relay (Фаза 5/6) нельзя закрывать control-соединение,
+пока relay-канал используется; нужно либо держать его открытым на весь
+срок жизни тоннеля, либо явно связать время жизни обоих (как это сделано
+в тесте `establish_session_e2e_test.go`, см. `relayStreamWithConn`).
+
 ## Дорожная карта (обновляй чекбоксы по ходу работы)
 
 - [x] Фаза 0: `git init`, каркас модуля (`go.mod`), структура папок по Clean
@@ -231,7 +244,7 @@ UDP WireGuard-пакетов, endpoint динамически обновляет
       клиент регистрируется и получает свой public ip:port.
 - [x] Фаза 3: обмен кандидатами через сервер (signaling) + UDP hole punching
       между двумя клиентами, с тестом на loopback/двух локальных процессах.
-- [ ] Фаза 4: relay fallback на сервере, автоматическое переключение, если
+- [x] Фаза 4: relay fallback на сервере, автоматическое переключение, если
       punching не удался за таймаут.
 - [ ] Фаза 5: port-forward режим (`app connect`) поверх установленного
       канала.

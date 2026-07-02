@@ -28,6 +28,7 @@ type Server struct {
 	RegisterPeer      usecase.RegisterPeer
 	PublishCandidates usecase.PublishCandidates
 	AwaitCandidates   usecase.AwaitCandidates
+	RelayFallback     usecase.RelayFallback
 }
 
 // Serve runs the control-plane QUIC listener on conn until ctx is
@@ -86,5 +87,7 @@ func (s *Server) handleStream(ctx context.Context, conn *quic.Conn, stream *quic
 		s.handlePublishCandidates(reqCtx, stream)
 	case controlproto.MethodAwaitCandidates:
 		s.handleAwaitCandidates(reqCtx, stream)
+	case controlproto.MethodRelay:
+		s.handleRelay(reqCtx, stream)
 	}
 }

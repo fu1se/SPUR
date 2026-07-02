@@ -14,6 +14,9 @@ const (
 	MethodRegister Method = iota + 1
 	MethodPublishCandidates
 	MethodAwaitCandidates
+	// MethodRelay: after the RelayOpenRequest frame, the rest of the
+	// stream is a raw, unframed byte pipe — see RelayOpenRequest's doc.
+	MethodRelay
 )
 
 func WriteMethod(w io.Writer, m Method) error {

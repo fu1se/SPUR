@@ -44,3 +44,12 @@ message AwaitCandidatesRequest {
 message AwaitCandidatesResponse {
   repeated Candidate candidates = 1;
 }
+
+// RelayOpenRequest is the only framed message on a relay stream: after the
+// server reads it, the rest of the QUIC stream is treated as an opaque
+// byte pipe and spliced to the counterpart's stream for the same session.
+// There is no RelayOpenResponse — bytes just start flowing once both
+// sides of the session have opened their stream.
+message RelayOpenRequest {
+  string session_id = 1;
+}
