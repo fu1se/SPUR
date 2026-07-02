@@ -52,11 +52,11 @@ func CombineSalt(own, peer [32]byte) [32]byte {
 //
 // salt (see CombineSalt) is mixed in specifically so that the derived keys
 // are unique per session: priv/peerPub are the peers' persistent
-// identities, so an ECDH of those two alone is identical across every
-// session two given peers ever establish, which — combined with each
-// Stream's nonce starting from a shared-but-still-small counter — risked
-// AES-GCM nonce reuse across process runs, not just across streams within
-// one run.
+// identities, so an ECDH of those two alone would otherwise be identical
+// across every session two given peers ever establish, risking AES-GCM
+// nonce reuse across process runs, not just within one (see stream's doc
+// comment for how nonce uniqueness within a connection's many streams is
+// handled separately).
 func deriveKeys(priv *ecdh.PrivateKey, peerPub domain.PublicKey, salt [32]byte, isDialer bool) (sendKey, recvKey [32]byte, err error) {
 	remote, err := ecdh.X25519().NewPublicKey(peerPub[:])
 	if err != nil {
@@ -101,29 +101,19 @@ func WrapConn(conn port.TunnelConn, priv *ecdh.PrivateKey, peerPub domain.Public
 	if err != nil {
 		return nil, err
 	}
-	return &wrappedConn{
-		inner:     conn,
-		sendKey:   sendKey,
-		recvKey:   recvKey,
-		sendNonce: new(atomic.Uint64),
-		recvNonce: new(atomic.Uint64),
-	}, nil
+	return &wrappedConn{inner: conn, sendKey: sendKey, recvKey: recvKey}, nil
 }
 
 type wrappedConn struct {
 	inner            port.TunnelConn
 	sendKey, recvKey [32]byte
 
-	// sendNonce/recvNonce are shared by every Stream this connection
-	// produces, not reset per stream: a wrappedConn's send/recv key pair is
-	// fixed for its whole lifetime, and AES-GCM requires every (key, nonce)
-	// pair to be used at most once. A per-stream counter starting at 0
-	// would let two concurrently open streams (e.g. two forwarded TCP
-	// connections through one `spur connect`) encrypt their first frame
-	// under the identical (key, nonce=0) pair — a two-time-pad break of
-	// both confidentiality and, per GCM's "forbidden attack", forgeable
-	// authentication for the rest of that key's lifetime.
-	sendNonce, recvNonce *atomic.Uint64
+	// nextStreamID generates each locally-created stream's outbound nonce
+	// ID (see stream's doc comment) — a plain counter, not shared for
+	// nonce-counting purposes, just guaranteeing every stream this side of
+	// the connection ever creates gets a distinct ID. Atomic because
+	// OpenStream/AcceptStream could in principle be called concurrently.
+	nextStreamID atomic.Uint32
 }
 
 func (c *wrappedConn) OpenStream(ctx context.Context) (port.Stream, error) {
@@ -131,7 +121,7 @@ func (c *wrappedConn) OpenStream(ctx context.Context) (port.Stream, error) {
 	if err != nil {
 		return nil, err
 	}
-	return newStream(s, c.sendKey, c.recvKey, c.sendNonce, c.recvNonce)
+	return newStream(s, c.sendKey, c.recvKey, c.nextStreamID.Add(1)-1)
 }
 
 func (c *wrappedConn) AcceptStream(ctx context.Context) (port.Stream, error) {
@@ -139,7 +129,7 @@ func (c *wrappedConn) AcceptStream(ctx context.Context) (port.Stream, error) {
 	if err != nil {
 		return nil, err
 	}
-	return newStream(s, c.sendKey, c.recvKey, c.sendNonce, c.recvNonce)
+	return newStream(s, c.sendKey, c.recvKey, c.nextStreamID.Add(1)-1)
 }
 
 func (c *wrappedConn) Close() error { return c.inner.Close() }
@@ -147,18 +137,56 @@ func (c *wrappedConn) Close() error { return c.inner.Close() }
 // stream implements port.Stream, encrypting each Write call as one
 // length-prefixed AEAD-sealed frame and decrypting frames on Read,
 // buffering any plaintext the caller's buffer couldn't hold yet.
+//
+// Nonce uniqueness: a wrappedConn's sendKey/recvKey are fixed for its
+// whole lifetime and shared by every Stream it produces, so AES-GCM
+// requires every (key, nonce) pair used with them to be distinct. A plain
+// per-stream counter starting at 0 would let two different streams
+// encrypt their first frame under the identical (sendKey, nonce=0) pair.
+// A single counter shared across all streams doesn't work either: streams
+// are read by independent goroutines (see usecase.pipe, one per accepted
+// connection), so there is no guarantee the receive side consumes frames
+// from different streams in the same relative order the send side
+// produced them in, and decryption needs the exact nonce encryption used.
+//
+// Instead, each stream's local side picks its own outbound ID (a
+// connection-scoped counter, sendID below) the moment it's created, and
+// sends it as a 4-byte plaintext prefix on the wire ahead of its first
+// frame — cheap and fine to send in the clear, since a nonce doesn't need
+// to be secret, only unique. That prefix rides along with the first
+// Write() call rather than being sent eagerly when the stream is created:
+// an eager write here would need the peer to already be reading, which
+// isn't guaranteed at stream-open time (see wgmesh.Bind's AddPeer for the
+// same "stream not visible until something is written" concern with
+// QUIC/yamux streams — the difference is that case needs a dedicated
+// priming write because it may have nothing real to send yet, whereas
+// this ID has a real first frame to ride along with as soon as the caller
+// has something to write). The 12-byte AEAD nonce is then [4-byte
+// ID][8-byte per-stream counter]: unique across streams because the ID
+// is, unique within one stream because that stream's own counter is only
+// ever touched by that stream's own Write/Read calls, in order. The peer
+// learns our ID the same way in reverse: recvID is read lazily off the
+// wire on this stream's first Read call and used to reconstruct the
+// nonces the peer used to encrypt what it sends us.
 type stream struct {
-	inner            port.Stream
-	sendAEAD         cipher.AEAD
-	recvAEAD         cipher.AEAD
-	sendNonce        *atomic.Uint64
-	recvNonce        *atomic.Uint64
+	inner    port.Stream
+	sendAEAD cipher.AEAD
+	recvAEAD cipher.AEAD
+
+	sendID      uint32
+	sendIDSent  bool
+	sendCounter uint64
+
+	recvIDKnown bool
+	recvID      uint32
+	recvCounter uint64
+
 	pendingPlaintext []byte
 }
 
 const maxFrameSize = 65535
 
-func newStream(inner port.Stream, sendKey, recvKey [32]byte, sendNonce, recvNonce *atomic.Uint64) (*stream, error) {
+func newStream(inner port.Stream, sendKey, recvKey [32]byte, sendID uint32) (*stream, error) {
 	sendAEAD, err := newAEAD(sendKey)
 	if err != nil {
 		return nil, err
@@ -167,7 +195,7 @@ func newStream(inner port.Stream, sendKey, recvKey [32]byte, sendNonce, recvNonc
 	if err != nil {
 		return nil, err
 	}
-	return &stream{inner: inner, sendAEAD: sendAEAD, recvAEAD: recvAEAD, sendNonce: sendNonce, recvNonce: recvNonce}, nil
+	return &stream{inner: inner, sendAEAD: sendAEAD, recvAEAD: recvAEAD, sendID: sendID}, nil
 }
 
 func newAEAD(key [32]byte) (cipher.AEAD, error) {
@@ -182,9 +210,10 @@ func newAEAD(key [32]byte) (cipher.AEAD, error) {
 	return aead, nil
 }
 
-func nonceFromCounter(aead cipher.AEAD, counter uint64) []byte {
+func nonceFor(aead cipher.AEAD, id uint32, counter uint64) []byte {
 	nonce := make([]byte, aead.NonceSize())
-	binary.BigEndian.PutUint64(nonce[len(nonce)-8:], counter)
+	binary.BigEndian.PutUint32(nonce[:4], id)
+	binary.BigEndian.PutUint64(nonce[4:], counter)
 	return nonce
 }
 
@@ -193,8 +222,17 @@ func (s *stream) Write(p []byte) (int, error) {
 		return 0, fmt.Errorf("e2e: write too large: %d bytes", len(p))
 	}
 
-	counter := s.sendNonce.Add(1) - 1
-	nonce := nonceFromCounter(s.sendAEAD, counter)
+	if !s.sendIDSent {
+		var idBuf [4]byte
+		binary.BigEndian.PutUint32(idBuf[:], s.sendID)
+		if _, err := s.inner.Write(idBuf[:]); err != nil {
+			return 0, fmt.Errorf("e2e: write stream nonce id: %w", err)
+		}
+		s.sendIDSent = true
+	}
+
+	nonce := nonceFor(s.sendAEAD, s.sendID, s.sendCounter)
+	s.sendCounter++
 	ciphertext := s.sendAEAD.Seal(nil, nonce, p, nil)
 
 	var lenBuf [4]byte
@@ -215,6 +253,15 @@ func (s *stream) Read(p []byte) (int, error) {
 		return n, nil
 	}
 
+	if !s.recvIDKnown {
+		var idBuf [4]byte
+		if _, err := io.ReadFull(s.inner, idBuf[:]); err != nil {
+			return 0, fmt.Errorf("e2e: read stream nonce id: %w", err)
+		}
+		s.recvID = binary.BigEndian.Uint32(idBuf[:])
+		s.recvIDKnown = true
+	}
+
 	var lenBuf [4]byte
 	if _, err := io.ReadFull(s.inner, lenBuf[:]); err != nil {
 		return 0, err
@@ -229,8 +276,8 @@ func (s *stream) Read(p []byte) (int, error) {
 		return 0, err
 	}
 
-	counter := s.recvNonce.Add(1) - 1
-	nonce := nonceFromCounter(s.recvAEAD, counter)
+	nonce := nonceFor(s.recvAEAD, s.recvID, s.recvCounter)
+	s.recvCounter++
 	plaintext, err := s.recvAEAD.Open(nil, nonce, ciphertext, nil)
 	if err != nil {
 		return 0, fmt.Errorf("e2e: decrypt: %w", err)
