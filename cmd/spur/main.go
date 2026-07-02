@@ -50,14 +50,8 @@ func main() {
 }
 
 // loadDefaults reads the optional config file (see infra.Config's doc
-// comment) into cli.ClientDefaults, then layers environment variables on
-// top: SPUR_SERVER, SPUR_STUN_SERVER, SPUR_IDENTITY. Precedence, lowest
-// to highest: built-in zero value < config file < environment variable <
-// explicit CLI flag (flags always win — that's just cobra's normal
-// explicit-value-over-default behavior, nothing special to wire here). A
-// missing config file or unset env vars just mean the flag keeps
-// whatever the previous layer already set — every layer here is purely
-// additive/overriding, never required.
+// comment) into cli.ClientDefaults. A missing file just means every flag
+// keeps its original empty default — the config file is purely additive.
 func loadDefaults() (cli.ClientDefaults, error) {
 	path, err := infra.DefaultConfigPath()
 	if err != nil {
@@ -68,9 +62,9 @@ func loadDefaults() (cli.ClientDefaults, error) {
 		return cli.ClientDefaults{}, err
 	}
 	return cli.ClientDefaults{
-		Server:     infra.EnvString("SPUR_SERVER", cfg.Server),
-		StunServer: infra.EnvString("SPUR_STUN_SERVER", cfg.StunServer),
-		Identity:   infra.EnvString("SPUR_IDENTITY", cfg.Identity),
+		Server:     cfg.Server,
+		StunServer: cfg.StunServer,
+		Identity:   cfg.Identity,
 	}, nil
 }
 

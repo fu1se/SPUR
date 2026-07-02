@@ -50,26 +50,15 @@ func main() {
 	}
 }
 
-// loadDefaults gives every server flag a sane built-in default (--db via
-// infra.DefaultServerStatePath, --listen/--stun-listen/--verbose
-// hardcoded here since there's no config file for the server — see this
-// package's doc comment for why: unlike the client, there's normally
-// exactly one server, so there's nothing worth persisting across
-// invocations in a file), then layers environment variables on top:
-// SPUR_LISTEN, SPUR_STUN_LISTEN, SPUR_DB, SPUR_VERBOSE. Explicit flags
-// still always win over all of this — same precedence as the client's
-// loadDefaults.
+// loadDefaults gives --db a sane default (infra.DefaultServerStatePath) —
+// there is normally exactly one server, so unlike the client's config
+// file there is nothing worth persisting across invocations here.
 func loadDefaults() (cli.ServerDefaults, error) {
 	statePath, err := infra.DefaultServerStatePath()
 	if err != nil {
 		return cli.ServerDefaults{}, err
 	}
-	return cli.ServerDefaults{
-		Listen:     infra.EnvString("SPUR_LISTEN", ":4443"),
-		StunListen: infra.EnvString("SPUR_STUN_LISTEN", ":4444"),
-		State:      infra.EnvString("SPUR_DB", statePath),
-		Verbose:    infra.EnvBool("SPUR_VERBOSE", false),
-	}, nil
+	return cli.ServerDefaults{State: statePath}, nil
 }
 
 // runServer wires the SQLite-backed peer/network repositories, the
