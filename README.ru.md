@@ -1,4 +1,4 @@
-# spur
+# SPUR
 
 [English](README.md) | Русский
 
