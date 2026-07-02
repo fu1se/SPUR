@@ -8,6 +8,7 @@ package cli
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/spf13/cobra"
 )
@@ -33,6 +34,27 @@ type Dependencies struct {
 	// Register dials a control-plane server and registers an (ephemeral,
 	// until Phase 7) identity with it.
 	Register func(ctx context.Context, serverAddr string) (RegisterResult, error)
+
+	// Connect is "app connect": rendezvous with peerID, establish a P2P or
+	// relay session, and forward every connection to localPort through it.
+	// identityPath is where the caller's persisted identity lives (see
+	// infra.LoadOrCreateIdentity — without persistence across restarts,
+	// the two ends could never learn each other's ID before it changed
+	// again). onSelfID is called with the caller's own peer ID as soon as
+	// it's known, before Connect starts blocking. Blocks until ctx is
+	// cancelled or forwarding fails.
+	Connect func(ctx context.Context, serverAddr, stunAddr, peerID, identityPath string, localPort int, onSelfID func(selfID string)) error
+
+	// Expose is "app expose": rendezvous with peerID, establish a P2P or
+	// relay session, and dial targetPort locally for every incoming
+	// tunnel stream. identityPath, onSelfID: see Connect. Blocks until
+	// ctx is cancelled or serving fails.
+	Expose func(ctx context.Context, serverAddr, stunAddr, peerID, identityPath string, targetPort int, onSelfID func(selfID string)) error
+
+	// Whoami loads (or creates) the local identity and returns its peer
+	// ID, without any network access — the bootstrap step for learning
+	// your own ID before sharing it with a counterpart out-of-band.
+	Whoami func(identityPath string) (string, error)
 }
 
 // NewRootCommand builds the root cobra command with all subcommands wired
@@ -49,7 +71,9 @@ func NewRootCommand(deps Dependencies) *cobra.Command {
 		newVersionCommand(),
 		newServerCommand(deps),
 		newRegisterCommand(deps),
-		newConnectCommand(),
+		newWhoamiCommand(deps),
+		newConnectCommand(deps),
+		newExposeCommand(deps),
 		newJoinCommand(),
 	)
 
@@ -61,7 +85,7 @@ func newVersionCommand() *cobra.Command {
 		Use:   "version",
 		Short: "Показать версию",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cmd.Println(version)
+			fmt.Fprintln(cmd.OutOrStdout(), version)
 			return nil
 		},
 	}

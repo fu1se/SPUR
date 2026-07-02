@@ -180,6 +180,8 @@ UDP WireGuard-пакетов, endpoint динамически обновляет
                                    переводят данные между внешним миром и domain-моделями.
     /adapter/controlserver         — control-plane обработчики на сервере (QUIC), диспетчеризация по Method
     /adapter/controlclient         — control-plane клиент (QUIC), реализует usecase/port.Signaler
+                                     и usecase/port.Relay (relay-канал — это просто ещё один стрим
+                                     на этом же соединении)
     /adapter/controlproto          — protobuf-сообщения, фрейминг и Method-теги control-протокола
     /adapter/stunserver            — RFC5389 STUN Binding responder (отдельный UDP-порт от control-plane)
     /adapter/repository/memory    — in-memory реализации port.PeerRepository, port.CandidateStore,
@@ -188,8 +190,11 @@ UDP WireGuard-пакетов, endpoint динамически обновляет
     /adapter/repository/sqlite    — implements usecase/port.Repository
     /adapter/nat                  — STUN-клиент (та же UDP-сокета, что и punching), host-кандидаты,
                                      implements usecase/port.Puncher
-    /adapter/relay                — implements usecase/port.Relay
-    /adapter/tunnel                — QUIC-стримы/wireguard-go, implements usecase/port.TunnelTransport
+    /adapter/localnet              — TCP-реализации port.LocalListener/port.LocalDialer
+                                     (локальная сторона port-forward: `connect` слушает, `expose` дозванивается)
+    /adapter/tunnel                — implements usecase/port.TunnelTransport: QUIC поверх пробитого
+                                     UDP-сокета для P2P, yamux поверх relay-стрима для relay;
+                                     wireguard-go для mesh добавится в Фазе 6
 
 /internal/infra                  — низкоуровневая обвязка: конфиг, логгер, TLS/QUIC setup.
 ```
@@ -234,6 +239,60 @@ data-plane поверх relay (Фаза 5/6) нельзя закрывать con
 срок жизни тоннеля, либо явно связать время жизни обоих (как это сделано
 в тесте `establish_session_e2e_test.go`, см. `relayStreamWithConn`).
 
+### Bootstrap идентичности: `app whoami` и `--identity` (интерим до Фазы 7)
+
+`domain.SessionIDFor(a, b)` детерминирован, но требует, чтобы **обе**
+стороны знали ID друг друга ДО начала rendezvous — сервер не сводит
+`connect` и `expose` за них. Пока ключи были чисто эфемерными (новая
+случайная пара на каждый запуск), это делало флоу невозможным на
+практике: пользователь физически не мог узнать ID ещё не запущенного
+процесса. Решение — `infra.LoadOrCreateIdentity` персистит identity на
+диск (`~/.config/localizator/identity.key` по умолчанию, флаг
+`--identity` у `connect`/`expose`/`whoami`), а `app whoami` печатает свой
+ID без обращения к сети. Реальный флоу: обе стороны по отдельности
+запускают `app whoami`, обмениваются ID (пока — вручную, out-of-band),
+потом запускают `connect --to <id-пира>` / `expose --to <id-пира>`. Это
+осознанный временный костыль — полноценное discovery/invite-token
+решение по-прежнему запланировано на Фазу 7; когда оно появится, механизм
+персистентной идентичности не выбрасывается, а становится основой
+постоянных keypair'ов.
+
+Также: `cobra.Command.Print/Println/Printf` пишут в **stderr** (не
+stdout) — это поведение библиотеки, не опечатка. Для вывода, который
+должен быть перехватываемым (`id=$(app whoami)`), используй
+`fmt.Fprintln(cmd.OutOrStdout(), ...)` явно, как в `whoami.go` и
+`version`-команде. Статусные сообщения (`server`, `connect`, `expose`) —
+можно оставлять на `cmd.Printf`, там stderr уместен.
+
+### Не забывай сбрасывать `SetReadDeadline` перед передачей сокета дальше
+
+Реальный баг, найденный при ручной проверке Фазы 5 (два отдельных
+CLI-процесса «connect»/«expose», а не горутины в одном тесте): `nat.UDPPuncher.recvLoop`
+крутит `SetReadDeadline(now + 200ms)` в цикле опроса и — до фикса — ни разу
+не сбрасывал дедлайн на выходе. `adapter/tunnel.Transport` переиспользует
+тот же `*net.UDPConn` для QUIC сразу после успешного punching (это
+единственный способ не потерять пробитую NAT-мэппинг). В результате
+дедлайн оставался в прошлом, и КАЖДОЕ чтение quic-go на этом сокете сразу
+падало с `i/o timeout` вместо блокировки — внешне выглядело как: CPU
+процесса `connect`/`expose` улетал на 100%+ и не опускался, `ss -uapn`
+показывал огромный неубывающий Recv-Q на обеих сторон, при этом
+`EstablishSession` рапортовал `established_p2p` (сам QUIC-handshake
+успевал проскочить), но `AcceptStream`/дальнейшие данные зависали
+навсегда. Автотесты (`go test`, включая `-race`) этого не ловили — там всё
+успевает произойти за миллисекунды, до того как протухший дедлайн
+проявит себя. Отдельный автономный skeleton (голый quic-go, два процесса,
+без punching) подтвердил, что сам quic-go в этом окружении работает
+нормально — баг был именно в не сброшенном дедлайне.
+
+Фикс — в `nat.UDPPuncher.Punch`: дождаться (`sync.WaitGroup`), пока
+`sendLoop`/`recvLoop` реально завершатся, и только потом
+`SetReadDeadline(time.Time{})` перед возвратом. Любой новый код, который
+временно ставит дедлайны на сокете, а затем отдаёт этот же сокет другому
+потребителю (QUIC, будущий wireguard-go в Фазе 6) — обязан гарантировать
+сброс дедлайна **после того как** все горутины, которые его выставляли,
+точно завершились, а не просто по `defer` в месте, откуда дедлайн
+изначально ставился.
+
 ## Дорожная карта (обновляй чекбоксы по ходу работы)
 
 - [x] Фаза 0: `git init`, каркас модуля (`go.mod`), структура папок по Clean
@@ -246,8 +305,8 @@ data-plane поверх relay (Фаза 5/6) нельзя закрывать con
       между двумя клиентами, с тестом на loopback/двух локальных процессах.
 - [x] Фаза 4: relay fallback на сервере, автоматическое переключение, если
       punching не удался за таймаут.
-- [ ] Фаза 5: port-forward режим (`app connect`) поверх установленного
-      канала.
+- [x] Фаза 5: port-forward режим (`app connect`/`app expose`) поверх
+      установленного канала.
 - [ ] Фаза 6: mesh VPN режим (`app join`) — TUN + wireguard-go, coordination
       сервер раздаёт список пиров/ключей.
 - [ ] Фаза 7: аутентификация (keypair, инвайт-токены), шифрование control-

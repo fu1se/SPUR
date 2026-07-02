@@ -35,13 +35,13 @@ func TestRelay_SplicesTwoPeers(t *testing.T) {
 	relayBroker := memory.NewRelayBroker()
 	srv := &controlserver.Server{RelayFallback: usecase.RelayFallback{Broker: relayBroker}}
 
-	go func() { _ = srv.Serve(ctx, conn, tlsConf) }()
+	go func() { _ = srv.Serve(ctx, conn, tlsConf, infra.DefaultQUICConfig()) }()
 
-	clientA, err := controlclient.Dial(ctx, addr, infra.InsecureClientTLSConfig(controlproto.ALPN))
+	clientA, err := controlclient.Dial(ctx, addr, infra.InsecureClientTLSConfig(controlproto.ALPN), infra.DefaultQUICConfig())
 	require.NoError(t, err)
 	defer clientA.Close()
 
-	clientB, err := controlclient.Dial(ctx, addr, infra.InsecureClientTLSConfig(controlproto.ALPN))
+	clientB, err := controlclient.Dial(ctx, addr, infra.InsecureClientTLSConfig(controlproto.ALPN), infra.DefaultQUICConfig())
 	require.NoError(t, err)
 	defer clientB.Close()
 

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"sync"
 	"time"
 
 	"github.com/fu1se/localizator/internal/domain"
@@ -30,6 +31,19 @@ type UDPPuncher struct {
 
 // Punch blocks until a path to one of candidates is confirmed bidirectional,
 // ctx is cancelled, or the internal punch timeout elapses.
+//
+// Conn is handed off to a QUIC listener/dialer right after Punch returns
+// (see adapter/tunnel.Transport) — reusing the same socket is what keeps
+// the punched NAT mapping valid. That handoff is exactly why this method
+// cannot just return as soon as it has an answer: recvLoop calls
+// SetReadDeadline on every iteration, and if Punch returned while recvLoop
+// was still mid-flight, a deadline set moments earlier could still be in
+// effect (or about to be re-armed) when the caller starts using Conn for
+// QUIC — every read then fails instantly with an expired-deadline error
+// instead of blocking, which starves QUIC's receive loop and looks like a
+// runaway retransmit storm (high CPU, a growing unread recv queue). So
+// Punch explicitly waits for both goroutines to fully exit before it
+// clears the deadline and returns.
 func (p *UDPPuncher) Punch(ctx context.Context, candidates []domain.Candidate) (netip.AddrPort, error) {
 	if len(candidates) == 0 {
 		return netip.AddrPort{}, errors.New("nat: no candidates to punch")
@@ -41,15 +55,25 @@ func (p *UDPPuncher) Punch(ctx context.Context, candidates []domain.Candidate) (
 	payload := []byte(punchMagic + p.SessionID)
 
 	result := make(chan netip.AddrPort, 1)
-	go p.sendLoop(ctx, candidates, payload)
-	go p.recvLoop(ctx, payload, result)
 
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() { defer wg.Done(); p.sendLoop(ctx, candidates, payload) }()
+	go func() { defer wg.Done(); p.recvLoop(ctx, payload, result) }()
+
+	var addr netip.AddrPort
+	var punchErr error
 	select {
-	case addr := <-result:
-		return addr, nil
+	case addr = <-result:
 	case <-ctx.Done():
-		return netip.AddrPort{}, fmt.Errorf("nat: punch did not succeed: %w", ctx.Err())
+		punchErr = fmt.Errorf("nat: punch did not succeed: %w", ctx.Err())
 	}
+
+	cancel() // wake both loops now, don't wait for the deferred cancel on return
+	wg.Wait()
+	_ = p.Conn.SetReadDeadline(time.Time{})
+
+	return addr, punchErr
 }
 
 func (p *UDPPuncher) sendLoop(ctx context.Context, candidates []domain.Candidate, payload []byte) {

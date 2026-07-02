@@ -33,13 +33,13 @@ func TestRegister_EndToEnd(t *testing.T) {
 	addr := conn.LocalAddr().String()
 
 	serveErr := make(chan error, 1)
-	go func() { serveErr <- srv.Serve(ctx, conn, serverTLS) }()
+	go func() { serveErr <- srv.Serve(ctx, conn, serverTLS, infra.DefaultQUICConfig()) }()
 
 	var pub domain.PublicKey
 	_, err = rand.Read(pub[:])
 	require.NoError(t, err)
 
-	client, err := controlclient.Dial(ctx, addr, infra.InsecureClientTLSConfig(controlproto.ALPN))
+	client, err := controlclient.Dial(ctx, addr, infra.InsecureClientTLSConfig(controlproto.ALPN), infra.DefaultQUICConfig())
 	require.NoError(t, err)
 	defer client.Close()
 

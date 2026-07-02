@@ -32,6 +32,9 @@ func main() {
 	root := cli.NewRootCommand(cli.Dependencies{
 		RunServer: runServer,
 		Register:  register,
+		Connect:   connect,
+		Expose:    expose,
+		Whoami:    whoami,
 	})
 
 	if err := root.ExecuteContext(ctx); err != nil {
@@ -77,7 +80,7 @@ func runServer(ctx context.Context, controlAddr, stunAddr string) error {
 	}
 
 	g, gctx := errgroup.WithContext(ctx)
-	g.Go(func() error { return srv.Serve(gctx, controlConn, tlsConf) })
+	g.Go(func() error { return srv.Serve(gctx, controlConn, tlsConf, infra.DefaultQUICConfig()) })
 	g.Go(func() error { return stunserver.Serve(gctx, stunConn) })
 	return g.Wait()
 }
@@ -94,7 +97,7 @@ func register(ctx context.Context, serverAddr string) (cli.RegisterResult, error
 
 	tlsConf := infra.InsecureClientTLSConfig(controlproto.ALPN)
 
-	client, err := controlclient.Dial(ctx, serverAddr, tlsConf)
+	client, err := controlclient.Dial(ctx, serverAddr, tlsConf, infra.DefaultQUICConfig())
 	if err != nil {
 		return cli.RegisterResult{}, err
 	}
@@ -109,4 +112,19 @@ func register(ctx context.Context, serverAddr string) (cli.RegisterResult, error
 		PeerID:          string(result.PeerID),
 		ObservedAddress: result.ObservedAddress,
 	}, nil
+}
+
+// whoami loads (or creates) the local identity and returns its peer ID.
+// Pure local operation, no network access — see resolveIdentityPath and
+// rendezvous's doc comment for why this bootstrap step exists.
+func whoami(identityPath string) (string, error) {
+	resolvedIdentityPath, err := resolveIdentityPath(identityPath)
+	if err != nil {
+		return "", err
+	}
+	pub, err := infra.LoadOrCreateIdentity(resolvedIdentityPath)
+	if err != nil {
+		return "", fmt.Errorf("app: load identity: %w", err)
+	}
+	return string(domain.DerivePeerID(pub)), nil
 }

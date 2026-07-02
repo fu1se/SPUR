@@ -21,6 +21,15 @@ func SessionIDFor(a, b PeerID) string {
 	return hex.EncodeToString(sum[:16])
 }
 
+// IsDialer deterministically picks, between two peers, which one opens the
+// data-plane connection (QUIC dial, or yamux.Client) and which one accepts
+// it (QUIC listen, or yamux.Server) — without any extra coordination round
+// trip. Comparing PeerIDs lexicographically guarantees both sides land on
+// opposite answers when called with their own view of (self, counterpart).
+func IsDialer(self, counterpart PeerID) bool {
+	return self < counterpart
+}
+
 // SessionState is the lifecycle of one attempt to establish a data channel
 // between two peers, following the ICE-like flow described in CLAUDE.md:
 // register -> exchange candidates -> punch -> established (P2P or relay).

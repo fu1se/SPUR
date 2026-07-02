@@ -36,8 +36,8 @@ type Server struct {
 // the caller (composition root or a test) so the caller knows the actual
 // bound address before Serve is called — important for tests, which use
 // ephemeral ports and must not race a separate bind against this call.
-func (s *Server) Serve(ctx context.Context, conn net.PacketConn, tlsConf *tls.Config) error {
-	ln, err := quic.Listen(conn, tlsConf, nil)
+func (s *Server) Serve(ctx context.Context, conn net.PacketConn, tlsConf *tls.Config, quicConf *quic.Config) error {
+	ln, err := quic.Listen(conn, tlsConf, quicConf)
 	if err != nil {
 		return fmt.Errorf("controlserver: listen: %w", err)
 	}

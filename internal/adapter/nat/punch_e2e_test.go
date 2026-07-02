@@ -88,7 +88,7 @@ func runPeer(
 	}
 	defer conn.Close()
 
-	client, err := controlclient.Dial(ctx, controlAddr, infra.InsecureClientTLSConfig(controlproto.ALPN))
+	client, err := controlclient.Dial(ctx, controlAddr, infra.InsecureClientTLSConfig(controlproto.ALPN), infra.DefaultQUICConfig())
 	if err != nil {
 		return netip.AddrPort{}, err
 	}
@@ -143,7 +143,7 @@ func startControlServer(t *testing.T, ctx context.Context) string {
 	}
 
 	go func() {
-		_ = srv.Serve(ctx, conn, tlsConf)
+		_ = srv.Serve(ctx, conn, tlsConf, infra.DefaultQUICConfig())
 	}()
 
 	return conn.LocalAddr().String()

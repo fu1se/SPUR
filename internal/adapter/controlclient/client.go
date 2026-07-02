@@ -20,8 +20,8 @@ type Client struct {
 }
 
 // Dial establishes the QUIC control connection.
-func Dial(ctx context.Context, addr string, tlsConf *tls.Config) (*Client, error) {
-	conn, err := quic.DialAddr(ctx, addr, tlsConf, nil)
+func Dial(ctx context.Context, addr string, tlsConf *tls.Config, quicConf *quic.Config) (*Client, error) {
+	conn, err := quic.DialAddr(ctx, addr, tlsConf, quicConf)
 	if err != nil {
 		return nil, fmt.Errorf("controlclient: dial: %w", err)
 	}

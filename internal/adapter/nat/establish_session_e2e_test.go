@@ -90,7 +90,7 @@ func runFallbackPeer(
 	// falls back to relay, the returned stream is a *quic.Stream that lives
 	// on this connection, so closing it prematurely would tear the stream
 	// down too. Ownership is handed to relayStreamWithConn below instead.
-	client, err := controlclient.Dial(ctx, controlAddr, infra.InsecureClientTLSConfig(controlproto.ALPN))
+	client, err := controlclient.Dial(ctx, controlAddr, infra.InsecureClientTLSConfig(controlproto.ALPN), infra.DefaultQUICConfig())
 	if err != nil {
 		return domain.Session{}, nil, err
 	}
