@@ -8,6 +8,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net"
+	"sync/atomic"
 	"time"
 
 	"github.com/quic-go/quic-go"
@@ -30,6 +31,17 @@ var nopLogger = zerolog.Nop()
 // Serve, which is the parent of every request context).
 const awaitCandidatesTimeout = 60 * time.Second
 
+// maxConcurrentStreams bounds how many control-protocol streams (across
+// every connection) this server will handle at once. Several RPCs hold a
+// goroutine open for a while — AwaitCandidates up to awaitCandidatesTimeout,
+// Relay for a whole tunnel's lifetime once paired — and none of them
+// require prior authentication to invoke, so without a cap a client could
+// flood the server with streams that each cost it a blocked goroutine,
+// exhausting resources for everyone else. This is deliberately a single
+// global limit, not per-connection: a per-connection cap alone wouldn't
+// stop the same flood spread across many connections.
+const maxConcurrentStreams = 1024
+
 // Server serves the control-plane protocol over QUIC.
 type Server struct {
 	RegisterPeer      usecase.RegisterPeer
@@ -45,6 +57,26 @@ type Server struct {
 	// valid and means "don't log" (see nopLogger); set it from
 	// infra.NewLogger in the composition root to get real output.
 	Logger *zerolog.Logger
+
+	// MaxConcurrentStreams overrides maxConcurrentStreams; zero (the
+	// default zero value, so every existing &Server{...} literal keeps
+	// working unchanged) means "use maxConcurrentStreams". A field mainly
+	// so a test can exercise the limit with a small number instead of
+	// actually opening 1000+ real streams.
+	MaxConcurrentStreams int64
+
+	// activeStreams counts in-flight handleStream calls, see
+	// maxConcurrentStreams. Zero value is a valid, ready-to-use counter,
+	// so this doesn't require a constructor — every existing test and
+	// composition root that builds &Server{...} directly keeps working.
+	activeStreams atomic.Int64
+}
+
+func (s *Server) maxConcurrentStreams() int64 {
+	if s.MaxConcurrentStreams > 0 {
+		return s.MaxConcurrentStreams
+	}
+	return maxConcurrentStreams
 }
 
 func (s *Server) log() *zerolog.Logger {
@@ -87,7 +119,18 @@ func (s *Server) handleConn(ctx context.Context, conn *quic.Conn) {
 		if err != nil {
 			return
 		}
-		go s.handleStream(ctx, conn, stream)
+
+		if s.activeStreams.Add(1) > s.maxConcurrentStreams() {
+			s.activeStreams.Add(-1)
+			s.log().Warn().Str("remote", conn.RemoteAddr().String()).Msg("stream limit reached, rejecting")
+			_ = stream.Close()
+			continue
+		}
+
+		go func() {
+			defer s.activeStreams.Add(-1)
+			s.handleStream(ctx, conn, stream)
+		}()
 	}
 }
 
