@@ -48,7 +48,7 @@ curl -fsSL https://raw.githubusercontent.com/fu1se/SPUR/master/install.sh | sh
 `spur-server-windows-amd64.exe` с той же страницы релизов и добавьте их
 папку в `PATH` через «Переменные среды» вручную.
 
-Собрать и поставить из исходников (нужен Go 1.24+) — тот же install.sh
+Собрать и поставить из исходников (нужен Go 1.26+, см. `go.mod`) — тот же install.sh
 под капотом, поэтому PATH настраивается точно так же автоматически:
 
 ```sh

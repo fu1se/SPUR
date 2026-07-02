@@ -2,6 +2,7 @@ package cli
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/spf13/cobra"
 )
@@ -24,8 +25,14 @@ func newRegisterCommand(deps ClientDependencies, defaults ClientDefaults) *cobra
 			if err != nil {
 				return err
 			}
-			cmd.Printf("peer-id: %s\n", result.PeerID)
 			cmd.Printf("observed-address: %s\n", result.ObservedAddress)
+			// peer-id specifically goes to stdout via fmt.Fprintln, not
+			// cmd.Printf (which defaults to stderr, see whoami.go's same
+			// comment): register is the other command that surfaces a
+			// peer-id, and someone reasonably expecting
+			// `id=$(spur register --server ...)` to work the same way
+			// `id=$(spur whoami)` does deserves that to actually work.
+			fmt.Fprintln(cmd.OutOrStdout(), result.PeerID)
 			return nil
 		},
 	}
