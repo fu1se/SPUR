@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/netip"
+	"os"
 	"sync"
 	"time"
 
@@ -158,11 +159,8 @@ func (m *meshPeers) connectToNewMembers(ctx context.Context, network domain.Netw
 			continue
 		}
 
-		m.mu.Lock()
-		_, alreadyConnected := m.connected[member.PeerID]
-		m.mu.Unlock()
-		if alreadyConnected {
-			continue
+		if m.reapDeadConnection(member.PeerID) {
+			continue // still alive, leave it alone
 		}
 
 		wg.Add(1)
@@ -175,26 +173,48 @@ func (m *meshPeers) connectToNewMembers(ctx context.Context, network domain.Netw
 	wg.Wait()
 }
 
+// reapDeadConnection reports whether peer already has a live tunnel. If
+// mesh.connected still thinks it's connected but the underlying stream has
+// since died (wgmesh.Bind forgets a peer's stream once its own read loop
+// exits — see Bind.readLoop), the stale tunnel is closed and this reports
+// false instead, so the caller retries connectOne on the next call rather
+// than leaving that peer permanently unreachable until the whole process
+// restarts.
+func (m *meshPeers) reapDeadConnection(peer domain.PeerID) bool {
+	m.mu.Lock()
+	tun, ok := m.connected[peer]
+	stale := ok && !m.bind.HasPeer(peer)
+	if stale {
+		delete(m.connected, peer)
+	}
+	m.mu.Unlock()
+
+	if stale {
+		tun.Close()
+		return false
+	}
+	return ok
+}
+
 func (m *meshPeers) connectOne(ctx context.Context, mem domain.MeshMember) {
 	tun, _, err := rendezvous(ctx, m.serverAddr, m.stunAddr, m.identityPath, mem.PeerID, func(string) {})
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "spur: mesh: rendezvous with %s failed: %v\n", mem.PeerID, err)
 		return
 	}
 
 	isDialer := domain.IsDialer(m.self, mem.PeerID)
 	stream, err := meshStream(ctx, tun.conn, m.self, mem.PeerID)
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "spur: mesh: open stream to %s failed: %v\n", mem.PeerID, err)
 		tun.Close()
 		return
 	}
 	if err := m.bind.AddPeer(mem.PeerID, stream, isDialer); err != nil {
+		fmt.Fprintf(os.Stderr, "spur: mesh: register stream for %s failed: %v\n", mem.PeerID, err)
 		tun.Close()
 		return
 	}
-
-	m.mu.Lock()
-	m.connected[mem.PeerID] = tun
-	m.mu.Unlock()
 
 	cfg := wgmesh.PeerConfig{
 		PublicKey: mem.PublicKey,
@@ -203,7 +223,21 @@ func (m *meshPeers) connectOne(ctx context.Context, mem domain.MeshMember) {
 	}
 	// No listen_port here — see BuildDeviceConfig's doc comment for why
 	// that matters: only adds/updates mem, existing peers untouched.
-	_ = m.dev.IpcSet(wgmesh.BuildPeersConfig([]wgmesh.PeerConfig{cfg}))
+	if err := m.dev.IpcSet(wgmesh.BuildPeersConfig([]wgmesh.PeerConfig{cfg})); err != nil {
+		// Don't mark this peer connected: doing so unconditionally used
+		// to permanently exclude it from every future retry the moment
+		// IpcSet failed even once, since connectToNewMembers' liveness
+		// check would then see it as already connected forever, with no
+		// log line anywhere explaining why that peer never showed up.
+		fmt.Fprintf(os.Stderr, "spur: mesh: configure wireguard peer %s failed: %v\n", mem.PeerID, err)
+		m.bind.RemovePeer(mem.PeerID)
+		tun.Close()
+		return
+	}
+
+	m.mu.Lock()
+	m.connected[mem.PeerID] = tun
+	m.mu.Unlock()
 }
 
 func (m *meshPeers) closeAll() {

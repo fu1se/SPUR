@@ -1,6 +1,8 @@
 package wgmesh_test
 
 import (
+	"encoding/binary"
+	"io"
 	"net"
 	"testing"
 	"time"
@@ -164,4 +166,131 @@ func TestBind_ParseEndpoint(t *testing.T) {
 	ep, err := bind.ParseEndpoint("some-peer-id")
 	require.NoError(t, err)
 	require.Equal(t, wgmesh.Endpoint{Peer: "some-peer-id"}, ep)
+}
+
+func TestBind_HasPeer(t *testing.T) {
+	const peerID = domain.PeerID("peer-a")
+	_, stream := net.Pipe()
+
+	bind := wgmesh.NewBind()
+	t.Cleanup(func() { bind.Close() })
+
+	require.False(t, bind.HasPeer(peerID))
+	require.NoError(t, bind.AddPeer(peerID, stream, false))
+	require.True(t, bind.HasPeer(peerID))
+}
+
+func TestBind_RemovePeer(t *testing.T) {
+	const peerID = domain.PeerID("peer-a")
+	_, stream := net.Pipe()
+
+	bind := wgmesh.NewBind()
+	t.Cleanup(func() { bind.Close() })
+
+	require.NoError(t, bind.AddPeer(peerID, stream, false))
+	require.True(t, bind.HasPeer(peerID))
+
+	bind.RemovePeer(peerID)
+	require.False(t, bind.HasPeer(peerID))
+}
+
+// TestBind_SelfHealsWhenStreamDies guards against the gap found in a
+// security/reliability audit: a peer's stream dying used to leave it
+// wedged in Bind's map forever with no way for a caller to notice and
+// retry, since nothing ever removed a dead entry. HasPeer must start
+// reporting false once the underlying stream is gone, without anyone
+// having to call RemovePeer explicitly.
+func TestBind_SelfHealsWhenStreamDies(t *testing.T) {
+	const peerID = domain.PeerID("peer-a")
+	other, stream := net.Pipe()
+
+	bind := wgmesh.NewBind()
+	t.Cleanup(func() { bind.Close() })
+
+	require.NoError(t, bind.AddPeer(peerID, stream, false))
+	require.True(t, bind.HasPeer(peerID))
+
+	require.NoError(t, other.Close()) // the "remote" end going away kills readLoop's next Read
+
+	require.Eventually(t, func() bool {
+		return !bind.HasPeer(peerID)
+	}, 2*time.Second, 10*time.Millisecond, "Bind should forget a peer once its stream dies")
+}
+
+// TestBind_AddPeerReplacesAndClosesOldStream guards against the goroutine/
+// map-overwrite trap found in a security audit: a second AddPeer call for
+// a peer ID already registered used to silently overwrite the map entry
+// while the first stream's readLoop kept running underneath, leaking it
+// forever (nothing ever closed the superseded stream).
+func TestBind_AddPeerReplacesAndClosesOldStream(t *testing.T) {
+	const peerID = domain.PeerID("peer-a")
+	_, oldStream := net.Pipe()
+	_, newStream := net.Pipe()
+
+	bind := wgmesh.NewBind()
+	t.Cleanup(func() { bind.Close() })
+
+	require.NoError(t, bind.AddPeer(peerID, oldStream, false))
+	require.NoError(t, bind.AddPeer(peerID, newStream, false))
+
+	buf := make([]byte, 1)
+	_, err := oldStream.Read(buf)
+	require.Error(t, err, "the superseded stream should have been closed")
+}
+
+// TestBind_OnePeerFullChannelDoesNotBlockAnother guards against the
+// head-of-line blocking gap found in a security audit: all peers used to
+// share a single inbound channel, so one bursty (or malicious) peer
+// filling it would backpressure every other peer's readLoop too, since
+// they'd all block trying to write into the very same full channel. Each
+// peer now gets its own dedicated buffer, so filling peer A's completely
+// must not stop peer B's delivery.
+func TestBind_OnePeerFullChannelDoesNotBlockAnother(t *testing.T) {
+	const peerA = domain.PeerID("peer-a")
+	const peerB = domain.PeerID("peer-b")
+	// Mirrors the unexported peerChanBuffer constant in bind.go.
+	const peerChanBuffer = 128
+
+	otherA, streamA := net.Pipe()
+	otherB, streamB := net.Pipe()
+	t.Cleanup(func() { otherA.Close(); otherB.Close() })
+
+	bind := wgmesh.NewBind()
+	t.Cleanup(func() { bind.Close() })
+
+	require.NoError(t, bind.AddPeer(peerA, streamA, false))
+	require.NoError(t, bind.AddPeer(peerB, streamB, false))
+
+	// Fill peer A's channel to capacity. Nothing is draining it (Open/
+	// receive is never called in this test), but each of these writes
+	// still completes synchronously: readLoop reads the frame off the
+	// wire and buffers it in its own channel, which has room for exactly
+	// this many.
+	for range peerChanBuffer {
+		writeFramedPacket(t, otherA, []byte("a"))
+	}
+
+	// Peer B's channel is untouched by peer A's state: this write must
+	// complete promptly regardless.
+	writeDone := make(chan struct{})
+	go func() {
+		writeFramedPacket(t, otherB, []byte("b"))
+		close(writeDone)
+	}()
+
+	select {
+	case <-writeDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("peer B's delivery was blocked by peer A's full channel")
+	}
+}
+
+func writeFramedPacket(t *testing.T, w io.Writer, payload []byte) {
+	t.Helper()
+	var lenBuf [2]byte
+	binary.BigEndian.PutUint16(lenBuf[:], uint16(len(payload)))
+	_, err := w.Write(lenBuf[:])
+	require.NoError(t, err)
+	_, err = w.Write(payload)
+	require.NoError(t, err)
 }

@@ -12,6 +12,7 @@ import (
 	"io"
 	"net"
 	"net/netip"
+	"reflect"
 	"sync"
 
 	"golang.zx2c4.com/wireguard/conn"
@@ -21,9 +22,13 @@ import (
 )
 
 // maxPacketSize bounds a single framed WireGuard packet. WireGuard doesn't
-// fragment; real packets are bounded by the tunnel MTU (~1420 bytes), this
-// just guards against a corrupt length prefix reading garbage.
-const maxPacketSize = 65535
+// fragment; real packets are bounded by the tunnel MTU (device.DefaultMTU,
+// see NewDevice — not configurable in this codebase) plus its own Noise
+// overhead, comfortably under this. It's set well below the frame length
+// prefix's own uint16 range (65535) specifically so the "corrupt length
+// prefix" check in readFrameLength can actually trigger — a bound equal to
+// the field's own max value can never reject anything.
+const maxPacketSize = 2048
 
 // Endpoint identifies a mesh peer as a WireGuard conn.Endpoint. There's no
 // IP:port here on purpose: addressing was already resolved by
@@ -60,19 +65,26 @@ type incomingPacket struct {
 // silently went unreachable the moment the interface came up — this
 // comment is here so nobody "simplifies" that back in.
 type Bind struct {
-	mu      sync.Mutex
-	streams map[domain.PeerID]port.Stream
-
-	incoming chan incomingPacket
+	mu        sync.Mutex
+	streams   map[domain.PeerID]port.Stream
+	peerChans map[domain.PeerID]chan incomingPacket
 
 	openMu sync.Mutex
 	done   chan struct{}
 }
 
+// peerChanBuffer is each peer's dedicated inbound buffer. Per-peer, not
+// shared: a single shared channel used to mean one bursty (or malicious)
+// peer filling it would backpressure every other peer's readLoop too,
+// since they'd all block trying to write into the same full channel —
+// this way, one peer's channel filling up only slows delivery for that
+// peer.
+const peerChanBuffer = 128
+
 func NewBind() *Bind {
 	return &Bind{
-		streams:  make(map[domain.PeerID]port.Stream),
-		incoming: make(chan incomingPacket, 128),
+		streams:   make(map[domain.PeerID]port.Stream),
+		peerChans: make(map[domain.PeerID]chan incomingPacket),
 	}
 }
 
@@ -98,15 +110,79 @@ func (b *Bind) AddPeer(peer domain.PeerID, stream port.Stream, isDialer bool) er
 		}
 	}
 
-	b.mu.Lock()
-	b.streams[peer] = stream
-	b.mu.Unlock()
+	ch := make(chan incomingPacket, peerChanBuffer)
 
-	go b.readLoop(peer, stream)
+	b.mu.Lock()
+	old, hadOld := b.streams[peer]
+	b.streams[peer] = stream
+	b.peerChans[peer] = ch
+	b.mu.Unlock()
+	if hadOld {
+		// A second AddPeer for a peer ID already registered would
+		// otherwise silently overwrite the map entry while the first
+		// stream's readLoop kept running underneath (a leaked goroutine
+		// stuck reading a stream nothing references anymore). Closing it
+		// makes that readLoop's next read fail and return.
+		_ = old.Close()
+	}
+
+	go b.readLoop(peer, stream, ch)
 	return nil
 }
 
-func (b *Bind) readLoop(peer domain.PeerID, stream port.Stream) {
+// RemovePeer stops reading from and forgets peer's stream, and closes it.
+// Used when a peer's tunnel has died so a later reconnect attempt (a fresh
+// AddPeer call) starts clean rather than tripping the same-peer guard
+// above.
+func (b *Bind) RemovePeer(peer domain.PeerID) {
+	b.mu.Lock()
+	stream, ok := b.streams[peer]
+	delete(b.streams, peer)
+	b.mu.Unlock()
+	if ok {
+		_ = stream.Close()
+	}
+}
+
+// removeIfCurrent drops peer's stream and channel registrations, but only
+// if they're still the ones passed in — guards against clobbering a newer
+// registration a concurrent AddPeer may have already installed for the
+// same peer ID by the time this (an old readLoop's deferred cleanup,
+// typically) runs.
+func (b *Bind) removeIfCurrent(peer domain.PeerID, stream port.Stream, ch chan incomingPacket) {
+	b.mu.Lock()
+	if b.streams[peer] == stream {
+		delete(b.streams, peer)
+	}
+	if b.peerChans[peer] == ch {
+		delete(b.peerChans, peer)
+	}
+	b.mu.Unlock()
+}
+
+// HasPeer reports whether peer currently has a live, registered stream.
+func (b *Bind) HasPeer(peer domain.PeerID) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	_, ok := b.streams[peer]
+	return ok
+}
+
+func (b *Bind) readLoop(peer domain.PeerID, stream port.Stream, ch chan incomingPacket) {
+	// Self-heal on exit: once this stream dies (peer went offline,
+	// transient network failure, whatever), forget it so HasPeer reports
+	// it as gone and a caller like cmd/spur's meshPeers can retry a fresh
+	// AddPeer instead of that peer being wedged as "connected" forever.
+	// Guarded by identity, not just presence, so this doesn't clobber a
+	// newer stream a concurrent AddPeer may have already installed for
+	// the same peer. ch is closed here too (readLoop is its only writer)
+	// so Open's receive loop notices this peer is gone instead of
+	// selecting on a channel nobody will ever write to again.
+	defer func() {
+		b.removeIfCurrent(peer, stream, ch)
+		close(ch)
+	}()
+
 	for {
 		size, err := readFrameLength(stream)
 		if err != nil {
@@ -125,8 +201,9 @@ func (b *Bind) readLoop(peer domain.PeerID, stream port.Stream) {
 		// Deliberately unconditional: if nothing is currently reading
 		// (Bind momentarily between an Open/Close cycle), this just
 		// backpressures until the buffer has room or a new receive
-		// session starts draining it again.
-		b.incoming <- incomingPacket{data: buf, ep: Endpoint{Peer: peer}}
+		// session starts draining it again. Isolated to this peer's own
+		// channel, so it only ever delays this peer's own delivery.
+		ch <- incomingPacket{data: buf, ep: Endpoint{Peer: peer}}
 	}
 }
 
@@ -162,15 +239,43 @@ func (b *Bind) Open(_ uint16) ([]conn.ReceiveFunc, uint16, error) {
 	done := make(chan struct{})
 	b.done = done
 
+	// Fans in across every peer's own channel (see peerChanBuffer's doc
+	// comment for why each peer gets one instead of sharing a single
+	// channel) using reflect.Select, since the set of channels changes at
+	// runtime as peers are added/removed and a plain select statement
+	// needs a fixed case list at compile time. Rebuilt on every call: the
+	// peer set for a mesh network is small (tens of members, not
+	// thousands), so the reflection overhead is an acceptable trade for
+	// not having to manage a fleet of per-peer forwarder goroutines.
 	receive := func(packets [][]byte, sizes []int, eps []conn.Endpoint) (int, error) {
-		select {
-		case p := <-b.incoming:
+		for {
+			b.mu.Lock()
+			cases := make([]reflect.SelectCase, 0, len(b.peerChans)+1)
+			for _, ch := range b.peerChans {
+				cases = append(cases, reflect.SelectCase{Dir: reflect.SelectRecv, Chan: reflect.ValueOf(ch)})
+			}
+			b.mu.Unlock()
+
+			doneIdx := len(cases)
+			cases = append(cases, reflect.SelectCase{Dir: reflect.SelectRecv, Chan: reflect.ValueOf(done)})
+
+			chosen, recv, ok := reflect.Select(cases)
+			if chosen == doneIdx {
+				return 0, net.ErrClosed
+			}
+			if !ok {
+				// That peer's channel was closed (readLoop exited,
+				// possibly superseded by a newer AddPeer) between us
+				// building cases and reflect.Select firing on it.
+				// Rebuild against current state and try again.
+				continue
+			}
+
+			p := recv.Interface().(incomingPacket) //nolint:forcetypeassert // only incomingPacket values are ever sent on peerChans
 			n := copy(packets[0], p.data)
 			sizes[0] = n
 			eps[0] = p.ep
 			return 1, nil
-		case <-done:
-			return 0, net.ErrClosed
 		}
 	}
 	return []conn.ReceiveFunc{receive}, 0, nil
