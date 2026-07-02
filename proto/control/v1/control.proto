@@ -68,14 +68,20 @@ message MeshMember {
 }
 
 // JoinNetworkRequest asks the server to join (or auto-create) a mesh
-// network by name. There is no invite-token gating yet (see
-// usecase.JoinNetwork's doc comment) — Phase 7.
+// network by name. invite_token is required to join a network that
+// already exists (unless the caller is already a member); creating a new
+// one doesn't need it — see usecase.JoinNetwork's doc comment.
 message JoinNetworkRequest {
   string network_name = 1;
   bytes public_key = 2;
+  string invite_token = 3;
 }
 
 message JoinNetworkResponse {
   string cidr = 1;
   repeated MeshMember members = 2; // includes the caller itself
+  string invite_token = 3; // share this with whoever should join next
+  string error = 4; // non-empty means the join was rejected (e.g. bad
+                     // invite token) — cidr/members/invite_token are
+                     // meaningless when this is set
 }

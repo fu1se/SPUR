@@ -498,12 +498,14 @@ func (x *MeshMember) GetMeshIp() string {
 }
 
 // JoinNetworkRequest asks the server to join (or auto-create) a mesh
-// network by name. There is no invite-token gating yet (see
-// usecase.JoinNetwork's doc comment) — Phase 7.
+// network by name. invite_token is required to join a network that
+// already exists (unless the caller is already a member); creating a new
+// one doesn't need it — see usecase.JoinNetwork's doc comment.
 type JoinNetworkRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	NetworkName   string                 `protobuf:"bytes,1,opt,name=network_name,json=networkName,proto3" json:"network_name,omitempty"`
 	PublicKey     []byte                 `protobuf:"bytes,2,opt,name=public_key,json=publicKey,proto3" json:"public_key,omitempty"`
+	InviteToken   string                 `protobuf:"bytes,3,opt,name=invite_token,json=inviteToken,proto3" json:"invite_token,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -552,10 +554,19 @@ func (x *JoinNetworkRequest) GetPublicKey() []byte {
 	return nil
 }
 
+func (x *JoinNetworkRequest) GetInviteToken() string {
+	if x != nil {
+		return x.InviteToken
+	}
+	return ""
+}
+
 type JoinNetworkResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Cidr          string                 `protobuf:"bytes,1,opt,name=cidr,proto3" json:"cidr,omitempty"`
-	Members       []*MeshMember          `protobuf:"bytes,2,rep,name=members,proto3" json:"members,omitempty"` // includes the caller itself
+	Members       []*MeshMember          `protobuf:"bytes,2,rep,name=members,proto3" json:"members,omitempty"`                            // includes the caller itself
+	InviteToken   string                 `protobuf:"bytes,3,opt,name=invite_token,json=inviteToken,proto3" json:"invite_token,omitempty"` // share this with whoever should join next
+	Error         string                 `protobuf:"bytes,4,opt,name=error,proto3" json:"error,omitempty"`                                // non-empty means the join was rejected (e.g. bad
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -604,6 +615,20 @@ func (x *JoinNetworkResponse) GetMembers() []*MeshMember {
 	return nil
 }
 
+func (x *JoinNetworkResponse) GetInviteToken() string {
+	if x != nil {
+		return x.InviteToken
+	}
+	return ""
+}
+
+func (x *JoinNetworkResponse) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
 var File_control_proto protoreflect.FileDescriptor
 
 const file_control_proto_rawDesc = "" +
@@ -647,14 +672,17 @@ const file_control_proto_rawDesc = "" +
 	"\apeer_id\x18\x01 \x01(\tR\x06peerId\x12\x1d\n" +
 	"\n" +
 	"public_key\x18\x02 \x01(\fR\tpublicKey\x12\x17\n" +
-	"\amesh_ip\x18\x03 \x01(\tR\x06meshIp\"V\n" +
+	"\amesh_ip\x18\x03 \x01(\tR\x06meshIp\"y\n" +
 	"\x12JoinNetworkRequest\x12!\n" +
 	"\fnetwork_name\x18\x01 \x01(\tR\vnetworkName\x12\x1d\n" +
 	"\n" +
-	"public_key\x18\x02 \x01(\fR\tpublicKey\"[\n" +
+	"public_key\x18\x02 \x01(\fR\tpublicKey\x12!\n" +
+	"\finvite_token\x18\x03 \x01(\tR\vinviteToken\"\x94\x01\n" +
 	"\x13JoinNetworkResponse\x12\x12\n" +
 	"\x04cidr\x18\x01 \x01(\tR\x04cidr\x120\n" +
-	"\amembers\x18\x02 \x03(\v2\x16.control.v1.MeshMemberR\amembersB<Z:github.com/fu1se/localizator/internal/adapter/controlprotob\x06proto3"
+	"\amembers\x18\x02 \x03(\v2\x16.control.v1.MeshMemberR\amembers\x12!\n" +
+	"\finvite_token\x18\x03 \x01(\tR\vinviteToken\x12\x14\n" +
+	"\x05error\x18\x04 \x01(\tR\x05errorB<Z:github.com/fu1se/localizator/internal/adapter/controlprotob\x06proto3"
 
 var (
 	file_control_proto_rawDescOnce sync.Once

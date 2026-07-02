@@ -43,7 +43,7 @@ const meshRefreshInterval = 5 * time.Second
 // Requires elevated privileges (root/CAP_NET_ADMIN on Linux): creating the
 // TUN device and assigning it an address changes real system network
 // state.
-func join(ctx context.Context, serverAddr, stunAddr, networkName, identityPath string, onSelfID func(string)) error {
+func join(ctx context.Context, serverAddr, stunAddr, networkName, inviteToken, identityPath string, onSelfID func(string)) error {
 	resolvedIdentityPath, err := resolveIdentityPath(identityPath)
 	if err != nil {
 		return err
@@ -65,7 +65,7 @@ func join(ctx context.Context, serverAddr, stunAddr, networkName, identityPath s
 	}
 	defer joinClient.Close()
 
-	network, err := joinClient.JoinNetwork(ctx, networkName, id.PublicKey)
+	network, err := joinClient.JoinNetwork(ctx, networkName, inviteToken, id.PublicKey)
 	if err != nil {
 		return fmt.Errorf("app: join network: %w", err)
 	}
@@ -110,7 +110,10 @@ func join(ctx context.Context, serverAddr, stunAddr, networkName, identityPath s
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-ticker.C:
-			network, err := joinClient.JoinNetwork(ctx, networkName, id.PublicKey)
+			// Already a member by now, so the token isn't re-checked
+			// server-side — reusing it here is just convenient, not
+			// required.
+			network, err := joinClient.JoinNetwork(ctx, networkName, inviteToken, id.PublicKey)
 			if err != nil {
 				continue // transient — retry next tick
 			}

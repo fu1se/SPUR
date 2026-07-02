@@ -2,6 +2,7 @@ package controlserver
 
 import (
 	"context"
+	"errors"
 
 	"github.com/quic-go/quic-go"
 
@@ -22,13 +23,17 @@ func (s *Server) handleJoinNetwork(ctx context.Context, stream *quic.Stream) {
 	copy(pub[:], req.GetPublicKey())
 	peer := domain.DerivePeerID(pub)
 
-	network, err := s.JoinNetwork.Execute(ctx, req.GetNetworkName(), peer, pub)
+	network, err := s.JoinNetwork.Execute(ctx, req.GetNetworkName(), peer, pub, req.GetInviteToken())
 	if err != nil {
+		if errors.Is(err, domain.ErrInvalidInviteToken) {
+			_ = controlproto.WriteFrame(stream, &controlproto.JoinNetworkResponse{Error: err.Error()})
+		}
 		return
 	}
 
 	_ = controlproto.WriteFrame(stream, &controlproto.JoinNetworkResponse{
-		Cidr:    network.CIDR.String(),
-		Members: controlproto.MeshMembersToProto(network.Members),
+		Cidr:        network.CIDR.String(),
+		Members:     controlproto.MeshMembersToProto(network.Members),
+		InviteToken: network.InviteToken,
 	})
 }

@@ -11,6 +11,7 @@ func newJoinCommand(deps Dependencies) *cobra.Command {
 		serverAddr   string
 		stunAddr     string
 		network      string
+		inviteToken  string
 		identityPath string
 	)
 
@@ -21,7 +22,7 @@ func newJoinCommand(deps Dependencies) *cobra.Command {
 			if serverAddr == "" || stunAddr == "" || network == "" {
 				return errors.New("join: укажите --server, --stun-server и --network")
 			}
-			return deps.Join(cmd.Context(), serverAddr, stunAddr, network, identityPath, func(selfID string) {
+			return deps.Join(cmd.Context(), serverAddr, stunAddr, network, inviteToken, identityPath, func(selfID string) {
 				cmd.Printf("свой peer-id: %s\n", selfID)
 			})
 		},
@@ -30,6 +31,7 @@ func newJoinCommand(deps Dependencies) *cobra.Command {
 	cmd.Flags().StringVar(&serverAddr, "server", "", "адрес rendezvous/coordination-сервера")
 	cmd.Flags().StringVar(&stunAddr, "stun-server", "", "адрес STUN-эндпоинта сервера")
 	cmd.Flags().StringVar(&network, "network", "", "имя mesh-сети")
+	cmd.Flags().StringVar(&inviteToken, "invite", "", "инвайт-токен сети (не нужен при создании новой сети или повторном join)")
 	cmd.Flags().StringVar(&identityPath, "identity", "", "путь к файлу идентичности (по умолчанию — в конфиг-директории пользователя)")
 
 	return cmd

@@ -33,8 +33,9 @@ type MeshMemberResult struct {
 // JoinNetworkResult is what a successful mesh network join reports back to
 // the CLI layer.
 type JoinNetworkResult struct {
-	CIDR    string
-	Members []MeshMemberResult
+	CIDR        string
+	Members     []MeshMemberResult
+	InviteToken string // share with whoever should join this network next
 }
 
 // Dependencies holds the wired entrypoints each subcommand calls into.
@@ -73,14 +74,17 @@ type Dependencies struct {
 	// JoinNetwork registers with a mesh network on the server and returns
 	// its current membership. Control-plane only, no TUN — same
 	// "validate the control-plane piece in isolation" pattern as Register
-	// did for Phase 2.
-	JoinNetwork func(ctx context.Context, serverAddr, networkName, identityPath string) (JoinNetworkResult, error)
+	// did for Phase 2. inviteToken is required to join a network that
+	// already exists (irrelevant when creating a new one or rejoining a
+	// network the caller is already a member of).
+	JoinNetwork func(ctx context.Context, serverAddr, networkName, inviteToken, identityPath string) (JoinNetworkResult, error)
 
 	// Join is "app join": full mesh VPN mode — join the network, tunnel
 	// to every other member, and route traffic through a real TUN
 	// interface. Requires elevated privileges (root/CAP_NET_ADMIN on
-	// Linux). onSelfID: see Connect. Blocks until ctx is cancelled.
-	Join func(ctx context.Context, serverAddr, stunAddr, networkName, identityPath string, onSelfID func(selfID string)) error
+	// Linux). inviteToken: see JoinNetwork. onSelfID: see Connect. Blocks
+	// until ctx is cancelled.
+	Join func(ctx context.Context, serverAddr, stunAddr, networkName, inviteToken, identityPath string, onSelfID func(selfID string)) error
 }
 
 // NewRootCommand builds the root cobra command with all subcommands wired

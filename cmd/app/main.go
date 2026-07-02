@@ -143,7 +143,7 @@ func whoami(identityPath string) (string, error) {
 // joinNetwork loads (or creates) the local identity and joins a mesh
 // network on the server, returning its current membership. Control-plane
 // only — see cli.Dependencies.JoinNetwork's doc comment.
-func joinNetwork(ctx context.Context, serverAddr, networkName, identityPath string) (cli.JoinNetworkResult, error) {
+func joinNetwork(ctx context.Context, serverAddr, networkName, inviteToken, identityPath string) (cli.JoinNetworkResult, error) {
 	resolvedIdentityPath, err := resolveIdentityPath(identityPath)
 	if err != nil {
 		return cli.JoinNetworkResult{}, err
@@ -164,7 +164,7 @@ func joinNetwork(ctx context.Context, serverAddr, networkName, identityPath stri
 	}
 	defer client.Close()
 
-	network, err := client.JoinNetwork(ctx, networkName, id.PublicKey)
+	network, err := client.JoinNetwork(ctx, networkName, inviteToken, id.PublicKey)
 	if err != nil {
 		return cli.JoinNetworkResult{}, err
 	}
@@ -174,5 +174,5 @@ func joinNetwork(ctx context.Context, serverAddr, networkName, identityPath stri
 		members = append(members, cli.MeshMemberResult{PeerID: string(m.PeerID), MeshIP: m.MeshIP.String()})
 	}
 
-	return cli.JoinNetworkResult{CIDR: network.CIDR.String(), Members: members}, nil
+	return cli.JoinNetworkResult{CIDR: network.CIDR.String(), Members: members, InviteToken: network.InviteToken}, nil
 }

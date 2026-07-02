@@ -2,6 +2,7 @@ package controlclient
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/netip"
 
@@ -10,7 +11,7 @@ import (
 )
 
 // JoinNetwork implements port.NetworkJoiner.
-func (c *Client) JoinNetwork(ctx context.Context, networkName string, pub domain.PublicKey) (domain.Network, error) {
+func (c *Client) JoinNetwork(ctx context.Context, networkName, inviteToken string, pub domain.PublicKey) (domain.Network, error) {
 	stream, err := c.conn.OpenStreamSync(ctx)
 	if err != nil {
 		return domain.Network{}, fmt.Errorf("controlclient: open stream: %w", err)
@@ -23,6 +24,7 @@ func (c *Client) JoinNetwork(ctx context.Context, networkName string, pub domain
 	if err := controlproto.WriteFrame(stream, &controlproto.JoinNetworkRequest{
 		NetworkName: networkName,
 		PublicKey:   pub[:],
+		InviteToken: inviteToken,
 	}); err != nil {
 		return domain.Network{}, err
 	}
@@ -30,6 +32,9 @@ func (c *Client) JoinNetwork(ctx context.Context, networkName string, pub domain
 	var resp controlproto.JoinNetworkResponse
 	if err := controlproto.ReadFrame(stream, &resp); err != nil {
 		return domain.Network{}, err
+	}
+	if resp.GetError() != "" {
+		return domain.Network{}, errors.New(resp.GetError())
 	}
 
 	cidr, err := netip.ParsePrefix(resp.GetCidr())
@@ -42,8 +47,9 @@ func (c *Client) JoinNetwork(ctx context.Context, networkName string, pub domain
 	}
 
 	return domain.Network{
-		Name:    networkName,
-		CIDR:    cidr,
-		Members: members,
+		Name:        networkName,
+		CIDR:        cidr,
+		InviteToken: resp.GetInviteToken(),
+		Members:     members,
 	}, nil
 }

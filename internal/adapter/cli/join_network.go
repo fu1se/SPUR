@@ -16,6 +16,7 @@ func newJoinNetworkCommand(deps Dependencies) *cobra.Command {
 	var (
 		serverAddr   string
 		networkName  string
+		inviteToken  string
 		identityPath string
 	)
 
@@ -26,11 +27,14 @@ func newJoinNetworkCommand(deps Dependencies) *cobra.Command {
 			if serverAddr == "" || networkName == "" {
 				return errors.New("join-network: укажите --server и --network")
 			}
-			result, err := deps.JoinNetwork(cmd.Context(), serverAddr, networkName, identityPath)
+			result, err := deps.JoinNetwork(cmd.Context(), serverAddr, networkName, inviteToken, identityPath)
 			if err != nil {
 				return err
 			}
 			cmd.Printf("сеть: %s, cidr: %s\n", networkName, result.CIDR)
+			if result.InviteToken != "" {
+				cmd.Printf("инвайт-токен (передайте тем, кто будет присоединяться): %s\n", result.InviteToken)
+			}
 			for _, m := range result.Members {
 				cmd.Printf("  участник: %s  mesh-ip: %s\n", m.PeerID, m.MeshIP)
 			}
@@ -40,6 +44,7 @@ func newJoinNetworkCommand(deps Dependencies) *cobra.Command {
 
 	cmd.Flags().StringVar(&serverAddr, "server", "", "адрес rendezvous-сервера")
 	cmd.Flags().StringVar(&networkName, "network", "", "имя mesh-сети")
+	cmd.Flags().StringVar(&inviteToken, "invite", "", "инвайт-токен сети (не нужен при создании новой сети или повторном join)")
 	cmd.Flags().StringVar(&identityPath, "identity", "", "путь к файлу идентичности (по умолчанию — в конфиг-директории пользователя)")
 
 	return cmd
