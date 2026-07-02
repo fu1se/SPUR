@@ -32,8 +32,21 @@ cd SPUR
 make build          # соберёт ./bin/spur (клиент) и ./bin/spur-server (сервер)
 ```
 
-Релизные бинарники под все платформы (Linux/macOS/Windows,
-amd64/arm64): `make release` (см. `make help`).
+Чтобы `spur`/`spur-server` работали как обычные команды (без `./bin/`
+и без ручного копирования в `/usr/local/bin`):
+
+```sh
+make install        # go install в $(go env GOPATH)/bin
+```
+
+Убедитесь, что `$(go env GOPATH)/bin` есть в `PATH` (для fish:
+`fish_add_path (go env GOPATH)/bin`, для bash/zsh — добавить `export
+PATH="$PATH:$(go env GOPATH)/bin"` в `~/.bashrc`/`~/.zshrc`).
+
+Готовые бинарники (без сборки из исходников) — на странице
+[Releases](https://github.com/fu1se/SPUR/releases). Кросс-компиляция
+под все платформы (Linux/macOS/Windows, amd64/arm64) из исходников:
+`make release` (см. `make help`).
 
 `spur` устанавливается на каждую машину, которая будет подключаться к
 другим. `spur-server` — только на одну машину с публичным IP
@@ -209,6 +222,36 @@ spur send --server SERVER:4443 --stun-server SERVER:4444 \
 Флаги командной строки всегда имеют приоритет над конфиг-файлом; сам файл
 опционален — его отсутствие ничего не меняет в поведении по умолчанию.
 
+## Переменные окружения
+
+Те же значения можно задать через переменные окружения — удобно для
+systemd-юнитов, Docker и подобного, где конфиг-файла может не быть.
+Приоритет (по убыванию): явный флаг → переменная окружения →
+конфиг-файл → встроенное значение по умолчанию.
+
+Клиент (`spur`):
+
+| Переменная | Соответствует флагу |
+|---|---|
+| `SPUR_SERVER` | `--server` |
+| `SPUR_STUN_SERVER` | `--stun-server` |
+| `SPUR_IDENTITY` | `--identity` |
+
+Сервер (`spur-server`):
+
+| Переменная | Соответствует флагу |
+|---|---|
+| `SPUR_LISTEN` | `--listen` |
+| `SPUR_STUN_LISTEN` | `--stun-listen` |
+| `SPUR_DB` | `--db` |
+| `SPUR_VERBOSE` | `--verbose` (`1`/`true`/`yes`/`on`, регистронезависимо) |
+
+Пример запуска сервера только через окружение:
+
+```sh
+SPUR_LISTEN=:4443 SPUR_STUN_LISTEN=:4444 SPUR_VERBOSE=true spur-server
+```
+
 ## Все команды
 
 | Команда | Что делает |
@@ -248,6 +291,7 @@ spur send --server SERVER:4443 --stun-server SERVER:4444 \
 make test     # go test ./... -race
 make vet      # go vet + gofmt -l
 make build    # собрать ./bin/spur и ./bin/spur-server под текущую платформу
+make install  # go install в $(go env GOPATH)/bin
 ```
 
 Изменение control-протокола требует перегенерации protobuf-кода:

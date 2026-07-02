@@ -37,9 +37,13 @@ type ClientDefaults struct {
 }
 
 // ServerDefaults holds fallback values for server flags, loaded in
-// cmd/spur-server.
+// cmd/spur-server (config file plus environment variables — see that
+// package's loadDefaults for precedence).
 type ServerDefaults struct {
-	State string
+	Listen     string
+	StunListen string
+	State      string
+	Verbose    bool
 }
 
 // RegisterResult is what a successful control-plane registration reports
@@ -177,10 +181,10 @@ func NewServerRootCommand(deps ServerDependencies, defaults ServerDefaults) *cob
 		},
 	}
 
-	root.Flags().StringVar(&listenAddr, "listen", ":4443", "адрес control-канала (QUIC)")
-	root.Flags().StringVar(&stunAddr, "stun-listen", ":4444", "адрес STUN-эндпоинта (UDP)")
+	root.Flags().StringVar(&listenAddr, "listen", defaults.Listen, "адрес control-канала (QUIC)")
+	root.Flags().StringVar(&stunAddr, "stun-listen", defaults.StunListen, "адрес STUN-эндпоинта (UDP)")
 	root.Flags().StringVar(&dbPath, "db", defaults.State, "путь к файлу состояния сервера (SQLite)")
-	root.Flags().BoolVar(&verbose, "verbose", false, "подробные (debug-уровня) логи вместо info")
+	root.Flags().BoolVar(&verbose, "verbose", defaults.Verbose, "подробные (debug-уровня) логи вместо info")
 
 	root.AddCommand(newVersionCommand())
 
