@@ -88,8 +88,12 @@ func loadDefaults() (cli.Defaults, error) {
 // meaningful to persist (see that package's doc comment). Control-plane
 // and STUN run on separate UDP ports (see stunserver's package doc for
 // why); both are bound up front so a failure to bind either port surfaces
-// immediately instead of racing the accept loop.
-func runServer(ctx context.Context, controlAddr, stunAddr, dbPath string) error {
+// immediately instead of racing the accept loop. verbose is threaded into
+// the server's zerolog.Logger — every request handler used to drop its
+// errors silently, leaving an operator with zero visibility.
+func runServer(ctx context.Context, controlAddr, stunAddr, dbPath string, verbose bool) error {
+	logger := infra.NewLogger(verbose)
+
 	certPath, err := infra.DefaultServerCertPath()
 	if err != nil {
 		return err
@@ -132,6 +136,7 @@ func runServer(ctx context.Context, controlAddr, stunAddr, dbPath string) error 
 		AwaitCandidates:   usecase.AwaitCandidates{Store: candidateBroker},
 		RelayFallback:     usecase.RelayFallback{Broker: relayBroker},
 		JoinNetwork:       usecase.JoinNetwork{Networks: networks},
+		Logger:            &logger,
 	}
 
 	g, gctx := errgroup.WithContext(ctx)

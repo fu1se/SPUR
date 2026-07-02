@@ -57,8 +57,9 @@ type Dependencies struct {
 	// RunServer starts the rendezvous/control-plane server plus its STUN
 	// endpoint and blocks until ctx is cancelled. dbPath is where server
 	// state (peers, mesh networks) persists across restarts — see
-	// adapter/repository/sqlite.
-	RunServer func(ctx context.Context, listenAddr, stunAddr, dbPath string) error
+	// adapter/repository/sqlite. verbose switches operational logging
+	// from info to debug level.
+	RunServer func(ctx context.Context, listenAddr, stunAddr, dbPath string, verbose bool) error
 
 	// Register dials a control-plane server and registers an (ephemeral,
 	// until Phase 7) identity with it.

@@ -11,10 +11,17 @@ import (
 	"time"
 
 	"github.com/quic-go/quic-go"
+	"github.com/rs/zerolog"
 
 	"github.com/fu1se/localizator/internal/adapter/controlproto"
 	"github.com/fu1se/localizator/internal/usecase"
 )
+
+// nopLogger is what log() falls back to when Server.Logger is nil.
+// Every existing test constructs &Server{...} without setting Logger —
+// this keeps them working unchanged, with logging silently disabled,
+// instead of panicking on a nil writer.
+var nopLogger = zerolog.Nop()
 
 // awaitCandidatesTimeout bounds how long the server will hold an
 // AwaitCandidates stream open waiting for the counterpart to publish. It is
@@ -30,6 +37,21 @@ type Server struct {
 	AwaitCandidates   usecase.AwaitCandidates
 	RelayFallback     usecase.RelayFallback
 	JoinNetwork       usecase.JoinNetwork
+
+	// Logger receives operational events (connections, per-RPC errors).
+	// Every request handler used to drop its errors silently — an
+	// operator running this as a long-lived process had no way to tell a
+	// malformed request from a client bug from an attack attempt. nil is
+	// valid and means "don't log" (see nopLogger); set it from
+	// infra.NewLogger in the composition root to get real output.
+	Logger *zerolog.Logger
+}
+
+func (s *Server) log() *zerolog.Logger {
+	if s.Logger != nil {
+		return s.Logger
+	}
+	return &nopLogger
 }
 
 // Serve runs the control-plane QUIC listener on conn until ctx is
@@ -44,6 +66,8 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn, tlsConf *tls.Co
 	}
 	defer ln.Close()
 
+	s.log().Info().Str("addr", conn.LocalAddr().String()).Msg("control-plane listening")
+
 	for {
 		conn, err := ln.Accept(ctx)
 		if err != nil {
@@ -52,6 +76,7 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn, tlsConf *tls.Co
 			}
 			return fmt.Errorf("controlserver: accept: %w", err)
 		}
+		s.log().Debug().Str("remote", conn.RemoteAddr().String()).Msg("connection accepted")
 		go s.handleConn(ctx, conn)
 	}
 }
@@ -71,6 +96,7 @@ func (s *Server) handleStream(ctx context.Context, conn *quic.Conn, stream *quic
 
 	method, err := controlproto.ReadMethod(stream)
 	if err != nil {
+		s.log().Warn().Err(err).Str("remote", conn.RemoteAddr().String()).Msg("read method failed")
 		return
 	}
 
@@ -92,5 +118,7 @@ func (s *Server) handleStream(ctx context.Context, conn *quic.Conn, stream *quic
 		s.handleRelay(reqCtx, stream)
 	case controlproto.MethodJoinNetwork:
 		s.handleJoinNetwork(reqCtx, stream)
+	default:
+		s.log().Warn().Str("remote", conn.RemoteAddr().String()).Interface("method", method).Msg("unknown method")
 	}
 }
