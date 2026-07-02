@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"fmt"
+	"os"
 
 	"github.com/fu1se/spur/internal/adapter/localfs"
 	"github.com/fu1se/spur/internal/domain"
@@ -12,6 +14,16 @@ import (
 // recursively) to counterpart, who must be running "spur receive" against
 // the same peer ID.
 func send(ctx context.Context, serverAddr, stunAddr, counterpartID, identityPath, path string, onSelfID func(string)) error {
+	// Checked up front, before rendezvous: usecase.SendFiles only
+	// discovers a bad local path (typo, doesn't exist, no permission)
+	// after the full P2P handshake completes, which can take up to a
+	// minute (NAT punching, possible relay fallback) -- and leaves the
+	// receiving peer sitting in AcceptStream with no idea why it never
+	// gets data. Failing fast here means a simple typo costs nothing.
+	if _, err := os.Stat(path); err != nil {
+		return fmt.Errorf("app: %w", err)
+	}
+
 	tun, _, err := rendezvous(ctx, serverAddr, stunAddr, identityPath, domain.PeerID(counterpartID), onSelfID)
 	if err != nil {
 		return err

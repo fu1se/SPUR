@@ -66,6 +66,15 @@ func readFileHeader(r io.Reader) (entry port.FileEntry, end bool, err error) {
 	if err := binary.Read(r, binary.BigEndian, &size); err != nil {
 		return port.FileEntry{}, false, fmt.Errorf("usecase: read size: %w", err)
 	}
+	if size > math.MaxInt64 {
+		// An unchecked uint64->int64 cast here would silently produce a
+		// negative Size. io.CopyN then treats "already have -N of N
+		// bytes" as trivially satisfied (0 < negative is false) and
+		// returns success having consumed zero bytes of what the sender
+		// actually wrote as file content -- desyncing the rest of the
+		// stream's framing into garbage instead of failing cleanly here.
+		return port.FileEntry{}, false, fmt.Errorf("usecase: declared file size %d overflows int64", size)
+	}
 
 	return port.FileEntry{RelPath: string(pathBytes), Size: int64(size)}, false, nil
 }
