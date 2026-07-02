@@ -26,9 +26,9 @@ type RegisterResult struct {
 // Every field is populated in cmd/app; commands never know what concrete
 // adapters sit behind them.
 type Dependencies struct {
-	// RunServer starts the rendezvous/control-plane server and blocks
-	// until ctx is cancelled.
-	RunServer func(ctx context.Context, listenAddr string) error
+	// RunServer starts the rendezvous/control-plane server plus its STUN
+	// endpoint and blocks until ctx is cancelled.
+	RunServer func(ctx context.Context, listenAddr, stunAddr string) error
 
 	// Register dials a control-plane server and registers an (ephemeral,
 	// until Phase 7) identity with it.

@@ -1,9 +1,25 @@
 package domain
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"net/netip"
 	"time"
 )
+
+// SessionIDFor deterministically derives the shared session identifier two
+// peers use to rendezvous, from their two peer IDs alone — order does not
+// matter, and no third party needs to hand out the ID. This lets both
+// sides independently start publishing/awaiting candidates for the same
+// session without a prior "create session" round trip.
+func SessionIDFor(a, b PeerID) string {
+	x, y := string(a), string(b)
+	if x > y {
+		x, y = y, x
+	}
+	sum := sha256.Sum256([]byte(x + ":" + y))
+	return hex.EncodeToString(sum[:16])
+}
 
 // SessionState is the lifecycle of one attempt to establish a data channel
 // between two peers, following the ICE-like flow described in CLAUDE.md:

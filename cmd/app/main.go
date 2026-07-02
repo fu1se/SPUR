@@ -7,15 +7,19 @@ import (
 	"context"
 	"crypto/rand"
 	"fmt"
+	"net"
 	"os"
 	"os/signal"
 	"syscall"
+
+	"golang.org/x/sync/errgroup"
 
 	"github.com/fu1se/localizator/internal/adapter/cli"
 	"github.com/fu1se/localizator/internal/adapter/controlclient"
 	"github.com/fu1se/localizator/internal/adapter/controlproto"
 	"github.com/fu1se/localizator/internal/adapter/controlserver"
 	"github.com/fu1se/localizator/internal/adapter/repository/memory"
+	"github.com/fu1se/localizator/internal/adapter/stunserver"
 	"github.com/fu1se/localizator/internal/domain"
 	"github.com/fu1se/localizator/internal/infra"
 	"github.com/fu1se/localizator/internal/usecase"
@@ -35,21 +39,45 @@ func main() {
 	}
 }
 
-// runServer wires the in-memory peer repository and the RegisterPeer use
-// case into the control-plane QUIC server. The in-memory repository is
-// deliberately temporary — see CLAUDE.md's adapter/repository/memory note.
-func runServer(ctx context.Context, listenAddr string) error {
+// runServer wires the in-memory peer repository, candidate broker and their
+// use cases into the control-plane QUIC server, and runs the STUN
+// responder alongside it. The in-memory implementations are deliberately
+// temporary — see CLAUDE.md's adapter/repository/memory note. Control-plane
+// and STUN run on separate UDP ports (see stunserver's package doc for
+// why); both are bound up front so a failure to bind either port surfaces
+// immediately instead of racing the accept loop.
+func runServer(ctx context.Context, controlAddr, stunAddr string) error {
 	tlsConf, err := infra.SelfSignedServerTLSConfig(controlproto.ALPN)
 	if err != nil {
 		return fmt.Errorf("app: tls config: %w", err)
 	}
 
-	peers := memory.NewPeerRepository()
-	srv := &controlserver.Server{
-		RegisterPeer: usecase.RegisterPeer{Peers: peers},
+	controlConn, err := net.ListenPacket("udp", controlAddr)
+	if err != nil {
+		return fmt.Errorf("app: bind control-plane: %w", err)
 	}
 
-	return srv.Serve(ctx, listenAddr, tlsConf)
+	stunUDPAddr, err := net.ResolveUDPAddr("udp", stunAddr)
+	if err != nil {
+		return fmt.Errorf("app: resolve stun addr: %w", err)
+	}
+	stunConn, err := net.ListenUDP("udp", stunUDPAddr)
+	if err != nil {
+		return fmt.Errorf("app: bind stun: %w", err)
+	}
+
+	peers := memory.NewPeerRepository()
+	broker := memory.NewCandidateBroker()
+	srv := &controlserver.Server{
+		RegisterPeer:      usecase.RegisterPeer{Peers: peers},
+		PublishCandidates: usecase.PublishCandidates{Store: broker},
+		AwaitCandidates:   usecase.AwaitCandidates{Store: broker},
+	}
+
+	g, gctx := errgroup.WithContext(ctx)
+	g.Go(func() error { return srv.Serve(gctx, controlConn, tlsConf) })
+	g.Go(func() error { return stunserver.Serve(gctx, stunConn) })
+	return g.Wait()
 }
 
 // register dials serverAddr and registers an ephemeral identity. Real,

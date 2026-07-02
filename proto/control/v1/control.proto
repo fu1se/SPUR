@@ -16,3 +16,31 @@ message RegisterResponse {
   string peer_id = 1;
   string observed_address = 2; // host:port as seen by the server
 }
+
+// Candidate mirrors domain.Candidate on the wire.
+message Candidate {
+  string kind = 1;    // "host" | "server_reflexive" | "relay"
+  string address = 2; // ip:port
+}
+
+// PublishCandidatesRequest sends the caller's own candidates for a session,
+// identified by a session ID both peers derive independently
+// (domain.SessionIDFor) from their two peer IDs.
+message PublishCandidatesRequest {
+  string session_id = 1;
+  string peer_id = 2; // the publisher's own ID
+  repeated Candidate candidates = 3;
+}
+
+message PublishCandidatesResponse {}
+
+// AwaitCandidatesRequest blocks server-side until peer_id's candidates for
+// session_id have been published, or the stream's context is cancelled.
+message AwaitCandidatesRequest {
+  string session_id = 1;
+  string peer_id = 2; // whose candidates the caller is waiting for
+}
+
+message AwaitCandidatesResponse {
+  repeated Candidate candidates = 1;
+}

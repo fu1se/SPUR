@@ -49,6 +49,9 @@ func (c *Client) Register(ctx context.Context, pub domain.PublicKey) (RegisterRe
 	}
 	defer stream.Close()
 
+	if err := controlproto.WriteMethod(stream, controlproto.MethodRegister); err != nil {
+		return RegisterResult{}, err
+	}
 	if err := controlproto.WriteFrame(stream, &controlproto.RegisterRequest{
 		PublicKey: pub[:],
 	}); err != nil {

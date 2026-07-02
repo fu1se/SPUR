@@ -178,13 +178,15 @@ UDP WireGuard-пакетов, endpoint динамически обновляет
 
 /internal/adapter                — Interface Adapters. Реализуют порты из usecase,
                                    переводят данные между внешним миром и domain-моделями.
-    /adapter/controlserver         — control-plane обработчики на сервере (QUIC)
-    /adapter/controlclient         — control-plane клиент (QUIC)
-    /adapter/controlproto          — protobuf-сообщения и фрейминг control-протокола
-    /adapter/repository/memory    — in-memory реализация port.PeerRepository (до SQLite)
+    /adapter/controlserver         — control-plane обработчики на сервере (QUIC), диспетчеризация по Method
+    /adapter/controlclient         — control-plane клиент (QUIC), реализует usecase/port.Signaler
+    /adapter/controlproto          — protobuf-сообщения, фрейминг и Method-теги control-протокола
+    /adapter/stunserver            — RFC5389 STUN Binding responder (отдельный UDP-порт от control-plane)
+    /adapter/repository/memory    — in-memory реализации port.PeerRepository и port.CandidateStore (до SQLite)
     /adapter/cli                  — cobra-команды, транслируют CLI-флаги в вызовы usecase
     /adapter/repository/sqlite    — implements usecase/port.Repository
-    /adapter/nat                  — STUN/punching, implements usecase/port.Puncher
+    /adapter/nat                  — STUN-клиент (та же UDP-сокета, что и punching), host-кандидаты,
+                                     implements usecase/port.Puncher
     /adapter/relay                — implements usecase/port.Relay
     /adapter/tunnel                — QUIC-стримы/wireguard-go, implements usecase/port.TunnelTransport
 
@@ -205,6 +207,20 @@ UDP WireGuard-пакетов, endpoint динамически обновляет
 - Каждый новый usecase — сначала пишется интерфейс порта и сам usecase с
   тестами на моках, потом уже пишется adapter-реализация.
 
+### Тестирование сетевых адаптеров (UDP/QUIC)
+
+Функции `Serve` в `controlserver` и `stunserver` принимают уже забинженный
+`net.PacketConn`/`*net.UDPConn`, а не строку адреса. Это не только удобнее
+для передачи уже созданных сокетов, но и убирает гонку в тестах: если
+`Serve` сам резолвит и биндит адрес внутри себя, тест не может узнать
+реальный (эфемерный, `:0`) порт до того, как горутина с сервером
+запустится, и вынужден либо угадывать порт заранее (коллизии между
+прогонами, дефолтный `go test -count=N` их быстро ловит), либо спать
+после старта (медленно и всё равно не гарантирует готовность). Биндить
+сокет синхронно в тесте до запуска горутины, затем передавать готовый
+`conn` в `Serve` — единственный вариант без гонки. Держаться этого паттерна
+для любых будущих сетевых адаптеров (relay, tunnel).
+
 ## Дорожная карта (обновляй чекбоксы по ходу работы)
 
 - [x] Фаза 0: `git init`, каркас модуля (`go.mod`), структура папок по Clean
@@ -213,7 +229,7 @@ UDP WireGuard-пакетов, endpoint динамически обновляет
       в `usecase/port` (без реализаций).
 - [x] Фаза 2: control-plane — сервер регистрации пиров + STUN-эндпоинт,
       клиент регистрируется и получает свой public ip:port.
-- [ ] Фаза 3: обмен кандидатами через сервер (signaling) + UDP hole punching
+- [x] Фаза 3: обмен кандидатами через сервер (signaling) + UDP hole punching
       между двумя клиентами, с тестом на loopback/двух локальных процессах.
 - [ ] Фаза 4: relay fallback на сервере, автоматическое переключение, если
       punching не удался за таймаут.

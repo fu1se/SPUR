@@ -3,6 +3,7 @@ package controlclient_test
 import (
 	"context"
 	"crypto/rand"
+	"net"
 	"testing"
 	"time"
 
@@ -27,13 +28,12 @@ func TestRegister_EndToEnd(t *testing.T) {
 	peers := memory.NewPeerRepository()
 	srv := &controlserver.Server{RegisterPeer: usecase.RegisterPeer{Peers: peers}}
 
-	const addr = "127.0.0.1:48443"
+	conn, err := net.ListenPacket("udp", "127.0.0.1:0")
+	require.NoError(t, err)
+	addr := conn.LocalAddr().String()
 
 	serveErr := make(chan error, 1)
-	go func() { serveErr <- srv.Serve(ctx, addr, serverTLS) }()
-
-	// give the listener a moment to come up before dialing.
-	time.Sleep(100 * time.Millisecond)
+	go func() { serveErr <- srv.Serve(ctx, conn, serverTLS) }()
 
 	var pub domain.PublicKey
 	_, err = rand.Read(pub[:])
