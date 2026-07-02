@@ -54,12 +54,23 @@ func (p *UDPPuncher) Punch(ctx context.Context, candidates []domain.Candidate) (
 
 	payload := []byte(punchMagic + p.SessionID)
 
+	// A punch response is only trusted if it comes from one of the
+	// addresses we actually offered as candidates: session IDs are a
+	// public, deterministic function of two known peer IDs (see
+	// domain.SessionIDFor), so anyone who can send UDP to this socket and
+	// knows/guesses it could otherwise inject a forged response and
+	// redirect the punch to an address of their choosing.
+	allowed := make(map[netip.AddrPort]struct{}, len(candidates))
+	for _, c := range candidates {
+		allowed[c.Addr] = struct{}{}
+	}
+
 	result := make(chan netip.AddrPort, 1)
 
 	var wg sync.WaitGroup
 	wg.Add(2)
 	go func() { defer wg.Done(); p.sendLoop(ctx, candidates, payload) }()
-	go func() { defer wg.Done(); p.recvLoop(ctx, payload, result) }()
+	go func() { defer wg.Done(); p.recvLoop(ctx, payload, allowed, result) }()
 
 	var addr netip.AddrPort
 	var punchErr error
@@ -93,7 +104,7 @@ func (p *UDPPuncher) sendLoop(ctx context.Context, candidates []domain.Candidate
 	}
 }
 
-func (p *UDPPuncher) recvLoop(ctx context.Context, payload []byte, result chan<- netip.AddrPort) {
+func (p *UDPPuncher) recvLoop(ctx context.Context, payload []byte, allowed map[netip.AddrPort]struct{}, result chan<- netip.AddrPort) {
 	buf := make([]byte, 1500)
 
 	for {
@@ -108,6 +119,9 @@ func (p *UDPPuncher) recvLoop(ctx context.Context, payload []byte, result chan<-
 		}
 		if n != len(payload) || string(buf[:n]) != string(payload) {
 			continue // not our marker (or a stale one) — ignore
+		}
+		if _, ok := allowed[from]; !ok {
+			continue // marker matched, but not from an address we offered — ignore
 		}
 
 		// Ack a few times so the counterpart's recvLoop sees a reply even

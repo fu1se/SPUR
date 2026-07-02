@@ -40,15 +40,35 @@ func DiscoverServerReflexive(ctx context.Context, conn *net.UDPConn, stunServer 
 		return domain.Candidate{}, fmt.Errorf("nat: send stun request: %w", err)
 	}
 
+	// Only trust a response that both came from the STUN server we asked
+	// (not just any source that got a packet onto this socket first) and
+	// answers our own transaction: without this, anyone able to race a
+	// forged UDP packet onto the socket within stunTimeout could poison
+	// this client's belief about its own public ip:port, redirecting
+	// where a counterpart later attempts to punch.
 	buf := make([]byte, 1500)
-	n, _, err := conn.ReadFromUDPAddrPort(buf)
-	if err != nil {
-		return domain.Candidate{}, fmt.Errorf("nat: read stun response: %w", err)
-	}
-
-	res := &stun.Message{Raw: buf[:n]}
-	if err := res.Decode(); err != nil {
-		return domain.Candidate{}, fmt.Errorf("nat: decode stun response: %w", err)
+	var res *stun.Message
+	for {
+		n, from, err := conn.ReadFromUDPAddrPort(buf)
+		if err != nil {
+			return domain.Candidate{}, fmt.Errorf("nat: read stun response: %w", err)
+		}
+		// Unmap before comparing: a dual-stack ("::") socket reports an
+		// IPv4 peer's address as a v4-in-v6-mapped address
+		// (::ffff:a.b.c.d), which compares unequal to the plain IPv4
+		// stunServer AddrPort despite being the same endpoint.
+		if netip.AddrPortFrom(from.Addr().Unmap(), from.Port()) != netip.AddrPortFrom(stunServer.Addr().Unmap(), stunServer.Port()) {
+			continue
+		}
+		msg := &stun.Message{Raw: append([]byte(nil), buf[:n]...)}
+		if err := msg.Decode(); err != nil {
+			continue
+		}
+		if msg.TransactionID != req.TransactionID {
+			continue
+		}
+		res = msg
+		break
 	}
 
 	var xorAddr stun.XORMappedAddress
