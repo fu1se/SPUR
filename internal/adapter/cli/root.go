@@ -22,9 +22,10 @@ var version = "dev"
 // touch disk itself); zero values here just mean the flag keeps its
 // original empty default, so an absent config file changes nothing.
 type Defaults struct {
-	Server     string
-	StunServer string
-	Identity   string
+	Server      string
+	StunServer  string
+	Identity    string
+	ServerState string
 }
 
 // RegisterResult is what a successful control-plane registration reports
@@ -54,8 +55,10 @@ type JoinNetworkResult struct {
 // adapters sit behind them.
 type Dependencies struct {
 	// RunServer starts the rendezvous/control-plane server plus its STUN
-	// endpoint and blocks until ctx is cancelled.
-	RunServer func(ctx context.Context, listenAddr, stunAddr string) error
+	// endpoint and blocks until ctx is cancelled. dbPath is where server
+	// state (peers, mesh networks) persists across restarts — see
+	// adapter/repository/sqlite.
+	RunServer func(ctx context.Context, listenAddr, stunAddr, dbPath string) error
 
 	// Register dials a control-plane server and registers an (ephemeral,
 	// until Phase 7) identity with it.
@@ -111,7 +114,7 @@ func NewRootCommand(deps Dependencies, defaults Defaults) *cobra.Command {
 
 	root.AddCommand(
 		newVersionCommand(),
-		newServerCommand(deps),
+		newServerCommand(deps, defaults),
 		newRegisterCommand(deps, defaults),
 		newWhoamiCommand(deps, defaults),
 		newConnectCommand(deps, defaults),

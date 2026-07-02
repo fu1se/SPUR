@@ -125,7 +125,7 @@ UDP WireGuard-пакетов, endpoint динамически обновляет
 | Мультиплексирование (port-forward) | нативные QUIC-стримы |
 | Mesh-туннель | `wireguard-go` (`golang.zx2c4.com/wireguard`) |
 | Шифрование control-канала | TLS 1.3 (встроен в QUIC) + токены аутентификации |
-| Хранение состояния сервера | план — SQLite (`modernc.org/sqlite`); по факту всё ещё `adapter/repository/memory` (in-memory, без персистентности между рестартами сервера) — сознательно отложено, вне рамок дорожной карты (Фазы 0-8 не требовали персистентности сервера) |
+| Хранение состояния сервера | SQLite (`modernc.org/sqlite`, без cgo) — `adapter/repository/sqlite`, персистентно между рестартами (см. «Фаза 8+: SQLite» ниже). Ephemeral in-flight состояние (candidate exchange, relay-сплайсинг) остаётся в `adapter/repository/memory` — персистить нечего по своей природе |
 | Логи | план — `rs/zerolog`; по факту нигде не подключён, сервер/клиент пишут только через `cmd.Print*`/явные `fmt.Errorf` — тоже вне рамок дорожной карты |
 | Тесты | стандартный `testing` + `testify/require` для ассертов |
 
@@ -184,10 +184,15 @@ UDP WireGuard-пакетов, endpoint динамически обновляет
                                      на этом же соединении)
     /adapter/controlproto          — protobuf-сообщения, фрейминг и Method-теги control-протокола
     /adapter/stunserver            — RFC5389 STUN Binding responder (отдельный UDP-порт от control-plane)
-    /adapter/repository/memory    — in-memory реализации port.PeerRepository, port.CandidateStore,
-                                     port.RelayBroker, port.NetworkRepository (до SQLite)
+    /adapter/repository/memory    — in-memory реализации port.CandidateStore и port.RelayBroker
+                                     (по природе недолговечное, in-flight состояние — персистить
+                                     нечего, см. секцию «Фаза 8+: SQLite» ниже); также используется
+                                     как лёгкий тестовый дублёр port.PeerRepository/NetworkRepository
+                                     в юнит-тестах usecase/adapter слоёв, где реальный SQLite-файл
+                                     избыточен
     /adapter/cli                  — cobra-команды, транслируют CLI-флаги в вызовы usecase
-    /adapter/repository/sqlite    — implements usecase/port.Repository
+    /adapter/repository/sqlite    — implements port.PeerRepository и port.NetworkRepository,
+                                     персистентное состояние сервера (see «Фаза 8+: SQLite» ниже)
     /adapter/nat                  — STUN-клиент (та же UDP-сокета, что и punching), host-кандидаты,
                                      implements usecase/port.Puncher
     /adapter/localnet              — TCP-реализации port.LocalListener/port.LocalDialer
@@ -476,13 +481,48 @@ quic-go (5с) слишком короткий при конкурентной н
   живьём: `--help` показывает подставленное из конфига значение по
   умолчанию, `connect` без `--server` уходит резолвить адрес из конфига,
   явный флаг всё равно перебивает файл.
-- Заодно задокументирован ещё один расхождение с исходной таблицей стека:
-  `SQLite`/`zerolog` так и не подключены — сервер по-прежнему держит
-  состояние в памяти (`adapter/repository/memory`), логирование — через
-  `cmd.Print*`/`fmt.Errorf`. Ни то ни другое не требовалось ни одной из
-  восьми фаз дорожной карты; персистентность сервера и структурные логи —
-  за её рамками, не текущий баг, а сознательно нереализованная часть
-  исходного (более амбициозного) наброска стека.
+- На момент закрытия дорожной карты (8 фаз) `SQLite`/`zerolog` из исходной
+  таблицы стека ещё не были подключены — не требовались ни одной из фаз,
+  задокументировано как сознательно отложенное, не баг. Оба закрыты сразу
+  после по отдельному запросу — см. следующую секцию.
+
+### Фаза 8+: персистентность сервера (SQLite)
+
+По запросу пользователя после закрытия исходной дорожной карты — сервер
+терял всё состояние (зарегистрированных пиров, mesh-сети и их участников)
+на каждом рестарте, что нереалистично для узла, который должен работать
+долго. `internal/adapter/repository/sqlite` реализует `port.PeerRepository`
+и `port.NetworkRepository` поверх `modernc.org/sqlite` (чистый Go, без
+cgo — то же требование к сборке, что и у остального модуля).
+
+- `NetworkRepository.Update` держит тот же контракт атомарности, что и
+  `memory.NetworkRepository` (см. «Фаза 6» выше): `sync.Mutex` вокруг всего
+  read-mutate-write, а не просто SQL-транзакция — колбэк `mutate`
+  (который вычисляет `domain.Network.NextAvailableIP` и может вернуть
+  ошибку) выполняется в Go и не выражается одним SQL-выражением, так что
+  транзакция сама по себе не даёт нужной атомарности без мьютекса поверх.
+  Регрессионный тест (`TestNetworkRepository_ConcurrentUpdatesDontLoseMembers`)
+  — тот же сценарий, что и `usecase.TestJoinNetwork_ConcurrentJoinsDontLoseMembers`,
+  но прогнанный против настоящего SQLite-файла, а не карты в памяти.
+- `CandidateStore` и `RelayBroker` остались в `adapter/repository/memory`
+  осознанно, не по недосмотру: это по своей природе недолговечное,
+  in-flight состояние одного обмена кандидатами или одной relay-сессии —
+  персистить его между рестартами сервера бессмысленно, оно всё равно
+  протухнет вместе с оборвавшимся QUIC-соединением клиента.
+  `adapter/repository/memory` также остался лёгким тестовым дублёром
+  `PeerRepository`/`NetworkRepository` в юнит-тестах usecase/adapter
+  слоёв — настоящий SQLite-файл там был бы просто лишним трением.
+- `app server` получил флаг `--db` (по умолчанию —
+  `infra.DefaultServerStatePath()`,
+  `~/.config/localizator/state.db`) — та же схема, что у `--identity`.
+  **Живая проверка**: поднят сервер, зарегистрирован пир через
+  `app register`, сервер убит (`kill`, не graceful shutdown), содержимое
+  строки подтверждено напрямую через `sqlite3 state.db "select ..."` —
+  строка на диске. Отдельно — `app join-network` от двух разных identity
+  (A создаёт сеть и получает инвайт-токен, B входит по токену), сервер
+  убит и поднят заново на том же `--db`, A повторно вызывает
+  `join-network` без токена (т.к. уже участник) — видит себя и B в
+  membership без потери данных.
 
 ## Дорожная карта (обновляй чекбоксы по ходу работы)
 

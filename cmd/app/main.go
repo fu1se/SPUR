@@ -10,6 +10,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
 	"golang.org/x/sync/errgroup"
@@ -19,6 +20,7 @@ import (
 	"github.com/fu1se/localizator/internal/adapter/controlproto"
 	"github.com/fu1se/localizator/internal/adapter/controlserver"
 	"github.com/fu1se/localizator/internal/adapter/repository/memory"
+	"github.com/fu1se/localizator/internal/adapter/repository/sqlite"
 	"github.com/fu1se/localizator/internal/adapter/stunserver"
 	"github.com/fu1se/localizator/internal/domain"
 	"github.com/fu1se/localizator/internal/infra"
@@ -53,6 +55,9 @@ func main() {
 // loadDefaults reads the optional config file (see infra.Config's doc
 // comment) into cli.Defaults. A missing file just means every flag keeps
 // its original empty default — the config file is purely additive.
+// ServerState isn't read from the config file (there's normally exactly
+// one server, so there's little to save by not retyping --db); it's just
+// infra.DefaultServerStatePath() so --db has a sane default too.
 func loadDefaults() (cli.Defaults, error) {
 	path, err := infra.DefaultConfigPath()
 	if err != nil {
@@ -62,17 +67,29 @@ func loadDefaults() (cli.Defaults, error) {
 	if err != nil {
 		return cli.Defaults{}, err
 	}
-	return cli.Defaults{Server: cfg.Server, StunServer: cfg.StunServer, Identity: cfg.Identity}, nil
+	statePath, err := infra.DefaultServerStatePath()
+	if err != nil {
+		return cli.Defaults{}, err
+	}
+	return cli.Defaults{
+		Server:      cfg.Server,
+		StunServer:  cfg.StunServer,
+		Identity:    cfg.Identity,
+		ServerState: statePath,
+	}, nil
 }
 
-// runServer wires the in-memory peer repository, candidate broker and their
-// use cases into the control-plane QUIC server, and runs the STUN
-// responder alongside it. The in-memory implementations are deliberately
-// temporary — see CLAUDE.md's adapter/repository/memory note. Control-plane
+// runServer wires the SQLite-backed peer/network repositories, the
+// in-memory candidate broker and relay broker, and their use cases into
+// the control-plane QUIC server, then runs the STUN responder alongside
+// it. Peers and mesh networks now survive a restart (adapter/repository/
+// sqlite); candidates and relay splices stay in-memory because they are
+// inherently short-lived, in-flight coordination state with nothing
+// meaningful to persist (see that package's doc comment). Control-plane
 // and STUN run on separate UDP ports (see stunserver's package doc for
 // why); both are bound up front so a failure to bind either port surfaces
 // immediately instead of racing the accept loop.
-func runServer(ctx context.Context, controlAddr, stunAddr string) error {
+func runServer(ctx context.Context, controlAddr, stunAddr, dbPath string) error {
 	certPath, err := infra.DefaultServerCertPath()
 	if err != nil {
 		return err
@@ -96,8 +113,17 @@ func runServer(ctx context.Context, controlAddr, stunAddr string) error {
 		return fmt.Errorf("app: bind stun: %w", err)
 	}
 
-	peers := memory.NewPeerRepository()
-	networks := memory.NewNetworkRepository()
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0o700); err != nil {
+		return fmt.Errorf("app: create state dir: %w", err)
+	}
+	db, err := sqlite.Open(dbPath)
+	if err != nil {
+		return fmt.Errorf("app: open state db: %w", err)
+	}
+	defer db.Close()
+
+	peers := sqlite.NewPeerRepository(db)
+	networks := sqlite.NewNetworkRepository(db)
 	candidateBroker := memory.NewCandidateBroker()
 	relayBroker := memory.NewRelayBroker()
 	srv := &controlserver.Server{

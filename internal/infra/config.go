@@ -26,6 +26,16 @@ func DefaultConfigPath() (string, error) {
 	return filepath.Join(dir, "localizator", "config.json"), nil
 }
 
+// DefaultServerStatePath is where the server's SQLite database
+// (adapter/repository/sqlite) lives by default.
+func DefaultServerStatePath() (string, error) {
+	dir, err := os.UserConfigDir()
+	if err != nil {
+		return "", fmt.Errorf("infra: user config dir: %w", err)
+	}
+	return filepath.Join(dir, "localizator", "state.db"), nil
+}
+
 // LoadConfig reads path as JSON. A missing file is not an error: it just
 // means every field stays at its zero value, so every flag keeps behaving
 // as if no config file exists at all — the same "optional, additive"
