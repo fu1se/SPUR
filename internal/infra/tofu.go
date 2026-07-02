@@ -18,7 +18,7 @@ func DefaultTrustStorePath() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("infra: user config dir: %w", err)
 	}
-	return filepath.Join(dir, "localizator", "known_servers.json"), nil
+	return filepath.Join(dir, "spur", "known_servers.json"), nil
 }
 
 // tofuMu serializes trust-store reads/writes within this process, but two

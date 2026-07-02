@@ -9,11 +9,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/fu1se/localizator/internal/domain"
+	"github.com/fu1se/spur/internal/domain"
 )
 
 const (
-	punchMagic    = "localizator-punch1:"
+	punchMagic    = "spur-punch1:"
 	punchInterval = 150 * time.Millisecond
 	punchTimeout  = 10 * time.Second
 	punchAckSends = 3

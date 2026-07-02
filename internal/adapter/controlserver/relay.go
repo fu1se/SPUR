@@ -5,7 +5,7 @@ import (
 
 	"github.com/quic-go/quic-go"
 
-	"github.com/fu1se/localizator/internal/adapter/controlproto"
+	"github.com/fu1se/spur/internal/adapter/controlproto"
 )
 
 // handleRelay reads the RelayOpenRequest header, then hands the rest of

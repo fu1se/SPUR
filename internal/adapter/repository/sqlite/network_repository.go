@@ -8,7 +8,7 @@ import (
 	"net/netip"
 	"sync"
 
-	"github.com/fu1se/localizator/internal/domain"
+	"github.com/fu1se/spur/internal/domain"
 )
 
 // NetworkRepository is a SQLite-backed port.NetworkRepository.

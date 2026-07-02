@@ -10,7 +10,7 @@ import (
 // coordination end to end — join a network, print the assigned CIDR and
 // full membership list — without touching TUN/wireguard-go. It exists for
 // the same reason `register` did for Phase 2: validate the control-plane
-// piece independently of the data-plane piece (`app join`) that isn't
+// piece independently of the data-plane piece (`spur join`) that isn't
 // wired up yet.
 func newJoinNetworkCommand(deps ClientDependencies, defaults ClientDefaults) *cobra.Command {
 	var (

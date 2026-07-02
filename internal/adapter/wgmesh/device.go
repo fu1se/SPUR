@@ -10,7 +10,7 @@ import (
 )
 
 // InterfaceName is the TUN device name created for the mesh network.
-const InterfaceName = "localizator0"
+const InterfaceName = "spur0"
 
 // Device wraps a wireguard-go Device bound to a real TUN interface.
 // Creating one requires elevated privileges (root or CAP_NET_ADMIN on

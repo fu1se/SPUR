@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/require"
 	wgconn "golang.zx2c4.com/wireguard/conn"
 
-	"github.com/fu1se/localizator/internal/adapter/wgmesh"
-	"github.com/fu1se/localizator/internal/domain"
+	"github.com/fu1se/spur/internal/adapter/wgmesh"
+	"github.com/fu1se/spur/internal/domain"
 )
 
 // TestBind_SendReceiveRoundTrip verifies the framing/dispatch logic in

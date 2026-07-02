@@ -1,4 +1,4 @@
-module github.com/fu1se/localizator
+module github.com/fu1se/spur
 
 go 1.26.4
 

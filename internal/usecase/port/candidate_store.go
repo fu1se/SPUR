@@ -3,7 +3,7 @@ package port
 import (
 	"context"
 
-	"github.com/fu1se/localizator/internal/domain"
+	"github.com/fu1se/spur/internal/domain"
 )
 
 // CandidateStore is the server-side rendezvous point for candidate

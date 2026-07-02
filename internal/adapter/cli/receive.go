@@ -17,7 +17,7 @@ func newReceiveCommand(deps ClientDependencies, defaults ClientDefaults) *cobra.
 
 	cmd := &cobra.Command{
 		Use:   "receive",
-		Short: "Принять файл или директорию от пира, который запустил `app send`",
+		Short: "Принять файл или директорию от пира, который запустил `spur send`",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if serverAddr == "" || stunAddr == "" || peerID == "" || outDir == "" {
 				return errors.New("receive: укажите --server, --stun-server, --to и --out")

@@ -8,8 +8,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/fu1se/localizator/internal/adapter/repository/sqlite"
-	"github.com/fu1se/localizator/internal/domain"
+	"github.com/fu1se/spur/internal/adapter/repository/sqlite"
+	"github.com/fu1se/spur/internal/domain"
 )
 
 func TestPeerRepository_SaveAndFindByID(t *testing.T) {

@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/fu1se/localizator/internal/infra"
+	"github.com/fu1se/spur/internal/infra"
 )
 
 func TestLoadConfig_MissingFileReturnsZeroValue(t *testing.T) {
@@ -21,7 +21,7 @@ func TestLoadConfig_ReadsFields(t *testing.T) {
 	require.NoError(t, os.WriteFile(path, []byte(`{
 		"server": "rendezvous.example.com:4443",
 		"stun_server": "rendezvous.example.com:4444",
-		"identity": "/home/user/.config/localizator/identity.key"
+		"identity": "/home/user/.config/spur/identity.key"
 	}`), 0o600))
 
 	cfg, err := infra.LoadConfig(path)
@@ -29,7 +29,7 @@ func TestLoadConfig_ReadsFields(t *testing.T) {
 	require.Equal(t, infra.Config{
 		Server:     "rendezvous.example.com:4443",
 		StunServer: "rendezvous.example.com:4444",
-		Identity:   "/home/user/.config/localizator/identity.key",
+		Identity:   "/home/user/.config/spur/identity.key",
 	}, cfg)
 }
 

@@ -26,8 +26,8 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/fu1se/localizator/internal/domain"
-	"github.com/fu1se/localizator/internal/usecase/port"
+	"github.com/fu1se/spur/internal/domain"
+	"github.com/fu1se/spur/internal/usecase/port"
 )
 
 // deriveKeys computes the two directional AEAD keys for a link between
@@ -46,11 +46,11 @@ func deriveKeys(priv *ecdh.PrivateKey, peerPub domain.PublicKey, isDialer bool) 
 		return sendKey, recvKey, fmt.Errorf("e2e: ecdh: %w", err)
 	}
 
-	keyToDialer, err := hkdf.Key(sha256.New, shared, nil, "localizator-e2e-to-dialer", 32)
+	keyToDialer, err := hkdf.Key(sha256.New, shared, nil, "spur-e2e-to-dialer", 32)
 	if err != nil {
 		return sendKey, recvKey, fmt.Errorf("e2e: hkdf: %w", err)
 	}
-	keyToListener, err := hkdf.Key(sha256.New, shared, nil, "localizator-e2e-to-listener", 32)
+	keyToListener, err := hkdf.Key(sha256.New, shared, nil, "spur-e2e-to-listener", 32)
 	if err != nil {
 		return sendKey, recvKey, fmt.Errorf("e2e: hkdf: %w", err)
 	}

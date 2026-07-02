@@ -10,8 +10,8 @@ import (
 	"github.com/hashicorp/yamux"
 	"github.com/quic-go/quic-go"
 
-	"github.com/fu1se/localizator/internal/domain"
-	"github.com/fu1se/localizator/internal/usecase/port"
+	"github.com/fu1se/spur/internal/domain"
+	"github.com/fu1se/spur/internal/usecase/port"
 )
 
 // Transport implements port.TunnelTransport. Conn is the UDP socket that

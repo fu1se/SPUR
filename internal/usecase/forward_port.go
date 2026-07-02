@@ -3,10 +3,10 @@ package usecase
 import (
 	"context"
 
-	"github.com/fu1se/localizator/internal/usecase/port"
+	"github.com/fu1se/spur/internal/usecase/port"
 )
 
-// ForwardPort is the "app connect" (initiator) side of port-forward mode:
+// ForwardPort is the "spur connect" (initiator) side of port-forward mode:
 // every local connection accepted on Listener gets its own tunnel stream,
 // spliced together until either end closes.
 type ForwardPort struct {

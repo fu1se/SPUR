@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"net/netip"
 
-	"github.com/fu1se/localizator/internal/domain"
+	"github.com/fu1se/spur/internal/domain"
 )
 
 // CandidateToProto translates a domain.Candidate to its wire form.

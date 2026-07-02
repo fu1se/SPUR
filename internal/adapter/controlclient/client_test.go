@@ -9,13 +9,13 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/fu1se/localizator/internal/adapter/controlclient"
-	"github.com/fu1se/localizator/internal/adapter/controlproto"
-	"github.com/fu1se/localizator/internal/adapter/controlserver"
-	"github.com/fu1se/localizator/internal/adapter/repository/memory"
-	"github.com/fu1se/localizator/internal/domain"
-	"github.com/fu1se/localizator/internal/infra"
-	"github.com/fu1se/localizator/internal/usecase"
+	"github.com/fu1se/spur/internal/adapter/controlclient"
+	"github.com/fu1se/spur/internal/adapter/controlproto"
+	"github.com/fu1se/spur/internal/adapter/controlserver"
+	"github.com/fu1se/spur/internal/adapter/repository/memory"
+	"github.com/fu1se/spur/internal/domain"
+	"github.com/fu1se/spur/internal/infra"
+	"github.com/fu1se/spur/internal/usecase"
 )
 
 func TestRegister_EndToEnd(t *testing.T) {

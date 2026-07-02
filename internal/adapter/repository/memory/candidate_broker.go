@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/fu1se/localizator/internal/domain"
+	"github.com/fu1se/spur/internal/domain"
 )
 
 type candidateKey struct {

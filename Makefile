@@ -1,4 +1,4 @@
-MODULE     := github.com/fu1se/localizator
+MODULE     := github.com/fu1se/spur
 VERSION    := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS    := -s -w -X '$(MODULE)/internal/adapter/cli.version=$(VERSION)'
 BIN_DIR    := bin
@@ -8,7 +8,7 @@ RELEASE_PLATFORMS := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/a
 .PHONY: help
 help:
 	@echo "targets:"
-	@echo "  build    - build ./$(BIN_DIR)/app (client) and ./$(BIN_DIR)/app-server for the current platform"
+	@echo "  build    - build ./$(BIN_DIR)/spur (client) and ./$(BIN_DIR)/spur-server for the current platform"
 	@echo "  test     - go test ./... -race"
 	@echo "  vet      - go vet + gofmt -l (fails if any file is unformatted)"
 	@echo "  fmt      - gofmt -w every .go file"
@@ -19,8 +19,8 @@ help:
 .PHONY: build
 build:
 	mkdir -p $(BIN_DIR)
-	go build -trimpath -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/app ./cmd/app
-	go build -trimpath -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/app-server ./cmd/server
+	go build -trimpath -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/spur ./cmd/spur
+	go build -trimpath -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/spur-server ./cmd/spur-server
 
 .PHONY: test
 test:
@@ -52,9 +52,9 @@ release: clean
 		$(eval EXT := $(if $(filter windows,$(GOOS)),.exe,)) \
 		echo "building $(platform)..."; \
 		GOOS=$(GOOS) GOARCH=$(GOARCH) CGO_ENABLED=0 go build -trimpath -ldflags "$(LDFLAGS)" \
-			-o $(DIST_DIR)/app-$(GOOS)-$(GOARCH)$(EXT) ./cmd/app || exit 1; \
+			-o $(DIST_DIR)/spur-$(GOOS)-$(GOARCH)$(EXT) ./cmd/spur || exit 1; \
 		GOOS=$(GOOS) GOARCH=$(GOARCH) CGO_ENABLED=0 go build -trimpath -ldflags "$(LDFLAGS)" \
-			-o $(DIST_DIR)/app-server-$(GOOS)-$(GOARCH)$(EXT) ./cmd/server || exit 1; \
+			-o $(DIST_DIR)/spur-server-$(GOOS)-$(GOARCH)$(EXT) ./cmd/spur-server || exit 1; \
 	)
 
 .PHONY: clean

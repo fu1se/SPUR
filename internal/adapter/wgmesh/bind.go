@@ -16,8 +16,8 @@ import (
 
 	"golang.zx2c4.com/wireguard/conn"
 
-	"github.com/fu1se/localizator/internal/domain"
-	"github.com/fu1se/localizator/internal/usecase/port"
+	"github.com/fu1se/spur/internal/domain"
+	"github.com/fu1se/spur/internal/usecase/port"
 )
 
 // maxPacketSize bounds a single framed WireGuard packet. WireGuard doesn't

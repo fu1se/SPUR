@@ -4,7 +4,7 @@ import (
 	"context"
 	"net/netip"
 
-	"github.com/fu1se/localizator/internal/domain"
+	"github.com/fu1se/spur/internal/domain"
 )
 
 // Puncher performs simultaneous UDP hole punching against a set of remote

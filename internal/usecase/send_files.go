@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/fu1se/localizator/internal/usecase/port"
+	"github.com/fu1se/spur/internal/usecase/port"
 )
 
-// SendFiles is the "app send" side of file transfer mode: it opens one
+// SendFiles is the "spur send" side of file transfer mode: it opens one
 // dedicated tunnel stream, writes every file Source.List returns (each
 // preceded by a small header carrying its relative path and size — see
 // file_transfer_wire.go), then closes the stream. Unlike port-forward's

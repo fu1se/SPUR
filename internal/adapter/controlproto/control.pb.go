@@ -682,7 +682,7 @@ const file_control_proto_rawDesc = "" +
 	"\x04cidr\x18\x01 \x01(\tR\x04cidr\x120\n" +
 	"\amembers\x18\x02 \x03(\v2\x16.control.v1.MeshMemberR\amembers\x12!\n" +
 	"\finvite_token\x18\x03 \x01(\tR\vinviteToken\x12\x14\n" +
-	"\x05error\x18\x04 \x01(\tR\x05errorB<Z:github.com/fu1se/localizator/internal/adapter/controlprotob\x06proto3"
+	"\x05error\x18\x04 \x01(\tR\x05errorB5Z3github.com/fu1se/spur/internal/adapter/controlprotob\x06proto3"
 
 var (
 	file_control_proto_rawDescOnce sync.Once

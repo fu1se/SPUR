@@ -2,11 +2,11 @@
 // It is the outermost adapter for the interactive entrypoint of the
 // application; it must not contain business logic itself, and it must not
 // construct concrete adapter/infra implementations directly — those are
-// wired in the composition roots (cmd/app for the client, cmd/server for
+// wired in the composition roots (cmd/spur for the client, cmd/spur-server for
 // the server) and handed to this package as plain functions via
 // ClientDependencies/ServerDependencies.
 //
-// The client and server are separate binaries (cmd/app, cmd/server) so
+// The client and server are separate binaries (cmd/spur, cmd/spur-server) so
 // the client doesn't have to link in server-only weight (SQLite driver,
 // controlserver, STUN responder) it never runs — see CLAUDE.md's
 // "Разделение клиента и сервера" for why. This package still builds both
@@ -26,7 +26,7 @@ var version = "dev"
 
 // ClientDefaults holds fallback values for client flags a user would
 // otherwise have to retype on every invocation (--server, --stun-server,
-// --identity). Loaded from a config file in cmd/app (an infra concern —
+// --identity). Loaded from a config file in cmd/spur (an infra concern —
 // this package must not touch disk itself); zero values here just mean
 // the flag keeps its original empty default, so an absent config file
 // changes nothing.
@@ -37,7 +37,7 @@ type ClientDefaults struct {
 }
 
 // ServerDefaults holds fallback values for server flags, loaded in
-// cmd/server.
+// cmd/spur-server.
 type ServerDefaults struct {
 	State string
 }
@@ -65,14 +65,14 @@ type JoinNetworkResult struct {
 }
 
 // ClientDependencies holds the wired entrypoints each client subcommand
-// calls into. Every field is populated in cmd/app; commands never know
+// calls into. Every field is populated in cmd/spur; commands never know
 // what concrete adapters sit behind them.
 type ClientDependencies struct {
 	// Register dials a control-plane server and registers an (ephemeral,
 	// until Phase 7) identity with it.
 	Register func(ctx context.Context, serverAddr string) (RegisterResult, error)
 
-	// Connect is "app connect": rendezvous with peerID, establish a P2P or
+	// Connect is "spur connect": rendezvous with peerID, establish a P2P or
 	// relay session, and forward every connection to localPort through it.
 	// identityPath is where the caller's persisted identity lives (see
 	// infra.LoadOrCreateIdentity — without persistence across restarts,
@@ -82,7 +82,7 @@ type ClientDependencies struct {
 	// cancelled or forwarding fails.
 	Connect func(ctx context.Context, serverAddr, stunAddr, peerID, identityPath string, localPort int, onSelfID func(selfID string)) error
 
-	// Expose is "app expose": rendezvous with peerID, establish a P2P or
+	// Expose is "spur expose": rendezvous with peerID, establish a P2P or
 	// relay session, and dial targetPort locally for every incoming
 	// tunnel stream. identityPath, onSelfID: see Connect. Blocks until
 	// ctx is cancelled or serving fails.
@@ -101,21 +101,21 @@ type ClientDependencies struct {
 	// network the caller is already a member of).
 	JoinNetwork func(ctx context.Context, serverAddr, networkName, inviteToken, identityPath string) (JoinNetworkResult, error)
 
-	// Join is "app join": full mesh VPN mode — join the network, tunnel
+	// Join is "spur join": full mesh VPN mode — join the network, tunnel
 	// to every other member, and route traffic through a real TUN
 	// interface. Requires elevated privileges (root/CAP_NET_ADMIN on
 	// Linux). inviteToken: see JoinNetwork. onSelfID: see Connect. Blocks
 	// until ctx is cancelled.
 	Join func(ctx context.Context, serverAddr, stunAddr, networkName, inviteToken, identityPath string, onSelfID func(selfID string)) error
 
-	// Send is "app send": rendezvous with peerID and stream path (a file
+	// Send is "spur send": rendezvous with peerID and stream path (a file
 	// or a directory, walked recursively) through the tunnel to whoever
-	// runs "app receive" against the same peerID. identityPath, onSelfID:
+	// runs "spur receive" against the same peerID. identityPath, onSelfID:
 	// see Connect. Blocks until the transfer finishes or fails.
 	Send func(ctx context.Context, serverAddr, stunAddr, peerID, identityPath, path string, onSelfID func(selfID string)) error
 
-	// Receive is "app receive": rendezvous with peerID and write whatever
-	// "app send" streams through the tunnel under destDir, recreating the
+	// Receive is "spur receive": rendezvous with peerID and write whatever
+	// "spur send" streams through the tunnel under destDir, recreating the
 	// relative directory structure the sender walked. identityPath,
 	// onSelfID: see Connect. Blocks until the transfer finishes or fails.
 	Receive func(ctx context.Context, serverAddr, stunAddr, peerID, identityPath, destDir string, onSelfID func(selfID string)) error
@@ -133,13 +133,13 @@ type ServerDependencies struct {
 }
 
 // NewClientRootCommand builds the client binary's root cobra command
-// (app) with all client subcommands wired against deps. defaults
+// (spur) with all client subcommands wired against deps. defaults
 // pre-fills flags from a config file; every field can still be overridden
 // per-invocation by passing the flag explicitly.
 func NewClientRootCommand(deps ClientDependencies, defaults ClientDefaults) *cobra.Command {
 	root := &cobra.Command{
-		Use:           "app",
-		Short:         "localizator — прямое подключение в локальную сеть в обход NAT (клиент)",
+		Use:           "spur",
+		Short:         "spur — прямое подключение в локальную сеть в обход NAT (клиент)",
 		SilenceUsage:  true,
 		SilenceErrors: false,
 	}
@@ -160,15 +160,15 @@ func NewClientRootCommand(deps ClientDependencies, defaults ClientDefaults) *cob
 }
 
 // NewServerRootCommand builds the server binary's root cobra command
-// (app-server). Serving is the root command's own action — there is
+// (spur-server). Serving is the root command's own action — there is
 // nothing else this binary does — with "version" as its only subcommand.
 func NewServerRootCommand(deps ServerDependencies, defaults ServerDefaults) *cobra.Command {
 	var listenAddr, stunAddr, dbPath string
 	var verbose bool
 
 	root := &cobra.Command{
-		Use:           "app-server",
-		Short:         "localizator — rendezvous/signaling-сервер (control plane + STUN + relay fallback)",
+		Use:           "spur-server",
+		Short:         "spur — rendezvous/signaling-сервер (control plane + STUN + relay fallback)",
 		SilenceUsage:  true,
 		SilenceErrors: false,
 		RunE: func(cmd *cobra.Command, args []string) error {

@@ -22,7 +22,7 @@ func DefaultServerCertPath() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("infra: user config dir: %w", err)
 	}
-	return filepath.Join(dir, "localizator", "server.pem"), nil
+	return filepath.Join(dir, "spur", "server.pem"), nil
 }
 
 // LoadOrCreateServerTLSConfig persists a self-signed control-plane
@@ -97,7 +97,7 @@ func createAndSaveServerCertificate(path string) (tls.Certificate, error) {
 
 	template := &x509.Certificate{
 		SerialNumber:          serial,
-		Subject:               pkix.Name{CommonName: "localizator control-plane"},
+		Subject:               pkix.Name{CommonName: "spur control-plane"},
 		NotBefore:             time.Now().Add(-time.Hour),
 		NotAfter:              time.Now().Add(24 * 365 * time.Hour),
 		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,

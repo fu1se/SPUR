@@ -6,8 +6,8 @@ import (
 	"io"
 	"time"
 
-	"github.com/fu1se/localizator/internal/domain"
-	"github.com/fu1se/localizator/internal/usecase/port"
+	"github.com/fu1se/spur/internal/domain"
+	"github.com/fu1se/spur/internal/usecase/port"
 )
 
 // defaultPunchTimeout bounds how long EstablishSession waits for hole

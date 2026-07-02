@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"net/netip"
 
-	"github.com/fu1se/localizator/internal/adapter/controlproto"
-	"github.com/fu1se/localizator/internal/domain"
+	"github.com/fu1se/spur/internal/adapter/controlproto"
+	"github.com/fu1se/spur/internal/domain"
 )
 
 // JoinNetwork implements port.NetworkJoiner.

@@ -6,7 +6,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/fu1se/localizator/internal/domain"
+	"github.com/fu1se/spur/internal/domain"
 )
 
 // PeerRepository is a thread-safe in-memory implementation of

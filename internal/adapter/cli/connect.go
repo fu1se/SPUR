@@ -17,7 +17,7 @@ func newConnectCommand(deps ClientDependencies, defaults ClientDefaults) *cobra.
 
 	cmd := &cobra.Command{
 		Use:   "connect",
-		Short: "Пробросить локальный порт на сервис, открытый пиром через `app expose`",
+		Short: "Пробросить локальный порт на сервис, открытый пиром через `spur expose`",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if serverAddr == "" || stunAddr == "" || peerID == "" || localPort == 0 {
 				return errors.New("connect: укажите --server, --stun-server, --to и --local-port")

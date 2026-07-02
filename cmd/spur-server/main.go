@@ -4,7 +4,7 @@
 // then runs the STUN responder alongside it. No business logic lives
 // here.
 //
-// This is a separate binary from cmd/app on purpose — see that package's
+// This is a separate binary from cmd/spur on purpose — see that package's
 // doc comment and CLAUDE.md's "Разделение клиента и сервера": splitting
 // the composition roots means the client build never links in the SQLite
 // driver, controlserver, or the STUN responder it has no use for.
@@ -21,14 +21,14 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
-	"github.com/fu1se/localizator/internal/adapter/cli"
-	"github.com/fu1se/localizator/internal/adapter/controlproto"
-	"github.com/fu1se/localizator/internal/adapter/controlserver"
-	"github.com/fu1se/localizator/internal/adapter/repository/memory"
-	"github.com/fu1se/localizator/internal/adapter/repository/sqlite"
-	"github.com/fu1se/localizator/internal/adapter/stunserver"
-	"github.com/fu1se/localizator/internal/infra"
-	"github.com/fu1se/localizator/internal/usecase"
+	"github.com/fu1se/spur/internal/adapter/cli"
+	"github.com/fu1se/spur/internal/adapter/controlproto"
+	"github.com/fu1se/spur/internal/adapter/controlserver"
+	"github.com/fu1se/spur/internal/adapter/repository/memory"
+	"github.com/fu1se/spur/internal/adapter/repository/sqlite"
+	"github.com/fu1se/spur/internal/adapter/stunserver"
+	"github.com/fu1se/spur/internal/infra"
+	"github.com/fu1se/spur/internal/usecase"
 )
 
 func main() {

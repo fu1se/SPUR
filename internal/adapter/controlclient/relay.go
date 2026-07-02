@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/fu1se/localizator/internal/adapter/controlproto"
+	"github.com/fu1se/spur/internal/adapter/controlproto"
 )
 
 // OpenChannel implements port.Relay: it opens a stream, sends the relay

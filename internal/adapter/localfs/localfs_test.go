@@ -9,8 +9,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/fu1se/localizator/internal/adapter/localfs"
-	"github.com/fu1se/localizator/internal/usecase/port"
+	"github.com/fu1se/spur/internal/adapter/localfs"
+	"github.com/fu1se/spur/internal/usecase/port"
 )
 
 func TestSource_ListSingleFile(t *testing.T) {

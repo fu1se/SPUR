@@ -3,8 +3,8 @@ package usecase
 import (
 	"context"
 
-	"github.com/fu1se/localizator/internal/domain"
-	"github.com/fu1se/localizator/internal/usecase/port"
+	"github.com/fu1se/spur/internal/domain"
+	"github.com/fu1se/spur/internal/usecase/port"
 )
 
 // PublishCandidates stores a peer's candidate set for a session so the

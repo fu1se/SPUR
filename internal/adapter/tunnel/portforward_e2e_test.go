@@ -12,22 +12,22 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/fu1se/localizator/internal/adapter/controlclient"
-	"github.com/fu1se/localizator/internal/adapter/controlproto"
-	"github.com/fu1se/localizator/internal/adapter/controlserver"
-	"github.com/fu1se/localizator/internal/adapter/localnet"
-	"github.com/fu1se/localizator/internal/adapter/nat"
-	"github.com/fu1se/localizator/internal/adapter/repository/memory"
-	"github.com/fu1se/localizator/internal/adapter/stunserver"
-	"github.com/fu1se/localizator/internal/adapter/tunnel"
-	"github.com/fu1se/localizator/internal/domain"
-	"github.com/fu1se/localizator/internal/infra"
-	"github.com/fu1se/localizator/internal/usecase"
-	"github.com/fu1se/localizator/internal/usecase/port"
+	"github.com/fu1se/spur/internal/adapter/controlclient"
+	"github.com/fu1se/spur/internal/adapter/controlproto"
+	"github.com/fu1se/spur/internal/adapter/controlserver"
+	"github.com/fu1se/spur/internal/adapter/localnet"
+	"github.com/fu1se/spur/internal/adapter/nat"
+	"github.com/fu1se/spur/internal/adapter/repository/memory"
+	"github.com/fu1se/spur/internal/adapter/stunserver"
+	"github.com/fu1se/spur/internal/adapter/tunnel"
+	"github.com/fu1se/spur/internal/domain"
+	"github.com/fu1se/spur/internal/infra"
+	"github.com/fu1se/spur/internal/usecase"
+	"github.com/fu1se/spur/internal/usecase/port"
 )
 
 // TestPortForward_EndToEnd wires up the whole Phase 5 stack the same way
-// cmd/app's connect/expose commands do (register, exchange candidates,
+// cmd/spur's connect/expose commands do (register, exchange candidates,
 // establish a session, build a TunnelConn, run ForwardPort/
 // ServeExposedPort) and drives real bytes through it: a local TCP echo
 // server stands in for "the service being exposed", and the test dials the
@@ -91,7 +91,7 @@ func TestPortForward_EndToEnd(t *testing.T) {
 	}
 }
 
-// establishedTunnel mirrors cmd/app's private type of the same purpose:
+// establishedTunnel mirrors cmd/spur's private type of the same purpose:
 // keeping the TunnelConn, control connection and punched UDP socket alive
 // together (see CLAUDE.md's "Время жизни relay-стрима").
 type establishedTunnel struct {
@@ -106,7 +106,7 @@ func (t *establishedTunnel) Close() {
 	_ = t.udpConn.Close()
 }
 
-// doRendezvous replays cmd/app's rendezvous flow using the real adapters,
+// doRendezvous replays cmd/spur's rendezvous flow using the real adapters,
 // so this test exercises the exact same wiring the CLI uses.
 func doRendezvous(ctx context.Context, controlAddr string, stunAddr netip.AddrPort, self domain.PublicKey, counterpart domain.PeerID) (*establishedTunnel, domain.PeerID, error) {
 	selfID := domain.DerivePeerID(self)

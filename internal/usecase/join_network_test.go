@@ -8,9 +8,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/fu1se/localizator/internal/adapter/repository/memory"
-	"github.com/fu1se/localizator/internal/domain"
-	"github.com/fu1se/localizator/internal/usecase"
+	"github.com/fu1se/spur/internal/adapter/repository/memory"
+	"github.com/fu1se/spur/internal/domain"
+	"github.com/fu1se/spur/internal/usecase"
 )
 
 // TestJoinNetwork_ConcurrentJoinsDontLoseMembers is a regression test for

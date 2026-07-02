@@ -10,8 +10,8 @@ import (
 
 	"github.com/quic-go/quic-go"
 
-	"github.com/fu1se/localizator/internal/adapter/controlproto"
-	"github.com/fu1se/localizator/internal/domain"
+	"github.com/fu1se/spur/internal/adapter/controlproto"
+	"github.com/fu1se/spur/internal/domain"
 )
 
 // Client is a control-plane connection to a rendezvous server.

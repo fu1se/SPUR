@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/fu1se/localizator/internal/domain"
+	"github.com/fu1se/spur/internal/domain"
 )
 
 // Identity is a peer's real X25519 keypair: PrivateKey is the credential
@@ -28,12 +28,12 @@ func DefaultIdentityPath() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("infra: user config dir: %w", err)
 	}
-	return filepath.Join(dir, "localizator", "identity.key"), nil
+	return filepath.Join(dir, "spur", "identity.key"), nil
 }
 
 // LoadOrCreateIdentity persists a peer's X25519 private key across process
 // restarts, deriving the public key from it every time rather than storing
-// it separately. Without persistence, "app connect --to X" is unusable:
+// it separately. Without persistence, "spur connect --to X" is unusable:
 // there would be no point in time where a user could learn a peer's ID and
 // hand it to the other side before that ID changed again on the next run.
 func LoadOrCreateIdentity(path string) (Identity, error) {

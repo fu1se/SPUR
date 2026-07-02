@@ -5,7 +5,7 @@ import (
 
 	"github.com/hashicorp/yamux"
 
-	"github.com/fu1se/localizator/internal/usecase/port"
+	"github.com/fu1se/spur/internal/usecase/port"
 )
 
 type yamuxConn struct {

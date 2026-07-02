@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/fu1se/localizator/internal/domain"
+	"github.com/fu1se/spur/internal/domain"
 )
 
 // PeerRepository is a SQLite-backed port.PeerRepository.

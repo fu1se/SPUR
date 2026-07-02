@@ -16,7 +16,7 @@ func newSendCommand(deps ClientDependencies, defaults ClientDefaults) *cobra.Com
 
 	cmd := &cobra.Command{
 		Use:   "send <path>",
-		Short: "Отправить файл или директорию пиру, который запустил `app receive`",
+		Short: "Отправить файл или директорию пиру, который запустил `spur receive`",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if serverAddr == "" || stunAddr == "" || peerID == "" {

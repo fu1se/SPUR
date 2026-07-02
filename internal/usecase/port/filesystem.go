@@ -11,7 +11,7 @@ type FileEntry struct {
 }
 
 // FileSource enumerates and opens files rooted at a local path (a single
-// file, or a directory walked recursively) — the sending side ("app
+// file, or a directory walked recursively) — the sending side ("spur
 // send").
 type FileSource interface {
 	List() ([]FileEntry, error)
@@ -19,7 +19,7 @@ type FileSource interface {
 }
 
 // FileSink writes received files under a destination directory, creating
-// parent directories as needed — the receiving side ("app receive").
+// parent directories as needed — the receiving side ("spur receive").
 // Implementations must reject a RelPath that would escape the
 // destination directory (e.g. via "../"): it comes from whatever the
 // counterpart peer sent over the wire, not from a trusted local source.

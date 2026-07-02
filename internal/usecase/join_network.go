@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"net/netip"
 
-	"github.com/fu1se/localizator/internal/domain"
-	"github.com/fu1se/localizator/internal/usecase/port"
+	"github.com/fu1se/spur/internal/domain"
+	"github.com/fu1se/spur/internal/usecase/port"
 )
 
 // defaultMeshCIDR is used to auto-create a network the first time anyone

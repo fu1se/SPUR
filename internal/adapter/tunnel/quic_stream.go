@@ -10,14 +10,14 @@ import (
 
 	"github.com/quic-go/quic-go"
 
-	"github.com/fu1se/localizator/internal/usecase/port"
+	"github.com/fu1se/spur/internal/usecase/port"
 )
 
 // DataALPN is the QUIC application protocol negotiated for direct P2P
 // data-plane connections — distinct from controlproto.ALPN, since this is
 // a separate connection dialed straight to the punched peer address, not
 // to the rendezvous server.
-const DataALPN = "localizator-data/1"
+const DataALPN = "spur-data/1"
 
 type quicConn struct {
 	conn *quic.Conn

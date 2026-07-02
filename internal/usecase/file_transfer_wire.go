@@ -6,7 +6,7 @@ import (
 	"io"
 	"math"
 
-	"github.com/fu1se/localizator/internal/usecase/port"
+	"github.com/fu1se/spur/internal/usecase/port"
 )
 
 // The file transfer wire format is a sequence of headers, each followed by

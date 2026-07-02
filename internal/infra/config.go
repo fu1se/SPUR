@@ -23,7 +23,7 @@ func DefaultConfigPath() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("infra: user config dir: %w", err)
 	}
-	return filepath.Join(dir, "localizator", "config.json"), nil
+	return filepath.Join(dir, "spur", "config.json"), nil
 }
 
 // DefaultServerStatePath is where the server's SQLite database
@@ -33,7 +33,7 @@ func DefaultServerStatePath() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("infra: user config dir: %w", err)
 	}
-	return filepath.Join(dir, "localizator", "state.db"), nil
+	return filepath.Join(dir, "spur", "state.db"), nil
 }
 
 // LoadConfig reads path as JSON. A missing file is not an error: it just

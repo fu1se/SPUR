@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package control.v1;
 
-option go_package = "github.com/fu1se/localizator/internal/adapter/controlproto";
+option go_package = "github.com/fu1se/spur/internal/adapter/controlproto";
 
 // RegisterRequest is sent by a client right after the control-channel QUIC
 // handshake completes, to announce its identity to the rendezvous server.

@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/fu1se/localizator/internal/usecase/port"
+	"github.com/fu1se/spur/internal/usecase/port"
 )
 
-// ReceiveFiles is the "app receive" side of file transfer mode: it
+// ReceiveFiles is the "spur receive" side of file transfer mode: it
 // accepts the one tunnel stream SendFiles opens, reads headers and file
 // content until the end-of-transfer marker, writing each file through
 // Sink. Like SendFiles, this is a one-shot operation with a defined end,

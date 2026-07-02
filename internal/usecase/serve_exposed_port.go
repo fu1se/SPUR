@@ -3,10 +3,10 @@ package usecase
 import (
 	"context"
 
-	"github.com/fu1se/localizator/internal/usecase/port"
+	"github.com/fu1se/spur/internal/usecase/port"
 )
 
-// ServeExposedPort is the "app expose" (responder) side of port-forward
+// ServeExposedPort is the "spur expose" (responder) side of port-forward
 // mode: every tunnel stream accepted from Tunnel gets dialed out to the
 // local service via Dialer, spliced together until either end closes.
 type ServeExposedPort struct {

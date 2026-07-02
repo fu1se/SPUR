@@ -5,7 +5,7 @@ import (
 	"net"
 	"net/netip"
 
-	"github.com/fu1se/localizator/internal/domain"
+	"github.com/fu1se/spur/internal/domain"
 )
 
 // HostCandidates enumerates local unicast addresses bound to conn's port.

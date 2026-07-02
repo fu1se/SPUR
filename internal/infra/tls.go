@@ -1,6 +1,6 @@
 // Package infra holds low-level wiring (TLS, config, logging) used by the
-// composition root in cmd/app. It is the outermost layer: it may import
-// adapter, usecase and domain, but nothing may import infra except cmd/app.
+// composition root in cmd/spur. It is the outermost layer: it may import
+// adapter, usecase and domain, but nothing may import infra except cmd/spur.
 package infra
 
 import (
@@ -36,7 +36,7 @@ func SelfSignedServerTLSConfig(alpn string) (*tls.Config, error) {
 
 	template := &x509.Certificate{
 		SerialNumber:          serial,
-		Subject:               pkix.Name{CommonName: "localizator control-plane"},
+		Subject:               pkix.Name{CommonName: "spur control-plane"},
 		NotBefore:             time.Now().Add(-time.Hour),
 		NotAfter:              time.Now().Add(24 * 365 * time.Hour),
 		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,

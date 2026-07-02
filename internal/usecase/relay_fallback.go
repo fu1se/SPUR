@@ -4,7 +4,7 @@ import (
 	"context"
 	"io"
 
-	"github.com/fu1se/localizator/internal/usecase/port"
+	"github.com/fu1se/spur/internal/usecase/port"
 )
 
 // RelayFallback is the server-side use case backing the relay data path:

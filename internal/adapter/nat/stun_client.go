@@ -14,7 +14,7 @@ import (
 
 	"github.com/pion/stun/v3"
 
-	"github.com/fu1se/localizator/internal/domain"
+	"github.com/fu1se/spur/internal/domain"
 )
 
 const stunTimeout = 3 * time.Second

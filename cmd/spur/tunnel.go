@@ -6,16 +6,16 @@ import (
 	"fmt"
 	"net"
 
-	"github.com/fu1se/localizator/internal/adapter/controlclient"
-	"github.com/fu1se/localizator/internal/adapter/controlproto"
-	"github.com/fu1se/localizator/internal/adapter/e2e"
-	"github.com/fu1se/localizator/internal/adapter/localnet"
-	"github.com/fu1se/localizator/internal/adapter/nat"
-	"github.com/fu1se/localizator/internal/adapter/tunnel"
-	"github.com/fu1se/localizator/internal/domain"
-	"github.com/fu1se/localizator/internal/infra"
-	"github.com/fu1se/localizator/internal/usecase"
-	"github.com/fu1se/localizator/internal/usecase/port"
+	"github.com/fu1se/spur/internal/adapter/controlclient"
+	"github.com/fu1se/spur/internal/adapter/controlproto"
+	"github.com/fu1se/spur/internal/adapter/e2e"
+	"github.com/fu1se/spur/internal/adapter/localnet"
+	"github.com/fu1se/spur/internal/adapter/nat"
+	"github.com/fu1se/spur/internal/adapter/tunnel"
+	"github.com/fu1se/spur/internal/domain"
+	"github.com/fu1se/spur/internal/infra"
+	"github.com/fu1se/spur/internal/usecase"
+	"github.com/fu1se/spur/internal/usecase/port"
 )
 
 // establishedTunnel bundles a ready-to-use TunnelConn with the resources it
@@ -56,8 +56,8 @@ func controlClientTLS(serverAddr string) (*tls.Config, error) {
 	return infra.TOFUClientTLSConfig(trustStorePath, serverAddr, controlproto.ALPN), nil
 }
 
-// rendezvous runs the full client-side flow shared by "app connect" and
-// "app expose": load (or create) a persisted identity, register, gather
+// rendezvous runs the full client-side flow shared by "spur connect" and
+// "spur expose": load (or create) a persisted identity, register, gather
 // and exchange NAT candidates, establish a session (punch or relay
 // fallback), and build the resulting data-plane TunnelConn.
 //
@@ -174,8 +174,8 @@ func rendezvous(ctx context.Context, serverAddr, stunAddr, identityPath string, 
 	return &establishedTunnel{conn: encryptedConn, controlClient: client, udpConn: udpConn}, self, nil
 }
 
-// connect is "app connect": forward every local connection on localPort
-// through a tunnel to counterpart, who must be running "app expose".
+// connect is "spur connect": forward every local connection on localPort
+// through a tunnel to counterpart, who must be running "spur expose".
 func connect(ctx context.Context, serverAddr, stunAddr, counterpartID, identityPath string, localPort int, onSelfID func(string)) error {
 	tun, _, err := rendezvous(ctx, serverAddr, stunAddr, identityPath, domain.PeerID(counterpartID), onSelfID)
 	if err != nil {
@@ -192,7 +192,7 @@ func connect(ctx context.Context, serverAddr, stunAddr, counterpartID, identityP
 	return usecase.ForwardPort{Listener: listener, Tunnel: tun.conn}.Run(ctx)
 }
 
-// expose is "app expose": accept tunnel streams from counterpart and
+// expose is "spur expose": accept tunnel streams from counterpart and
 // forward each to targetPort on the local machine.
 func expose(ctx context.Context, serverAddr, stunAddr, counterpartID, identityPath string, targetPort int, onSelfID func(string)) error {
 	tun, _, err := rendezvous(ctx, serverAddr, stunAddr, identityPath, domain.PeerID(counterpartID), onSelfID)

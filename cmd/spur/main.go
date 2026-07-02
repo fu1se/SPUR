@@ -4,8 +4,8 @@
 //
 // This binary deliberately does not import controlserver, stunserver, or
 // adapter/repository (sqlite or memory) — those are server-only weight,
-// wired instead in cmd/server. Keeping them out of this build is the
-// whole point of the split: a client running "app connect" has no reason
+// wired instead in cmd/spur-server. Keeping them out of this build is the
+// whole point of the split: a client running "spur connect" has no reason
 // to link in a SQLite driver it will never open.
 package main
 
@@ -17,10 +17,10 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/fu1se/localizator/internal/adapter/cli"
-	"github.com/fu1se/localizator/internal/adapter/controlclient"
-	"github.com/fu1se/localizator/internal/domain"
-	"github.com/fu1se/localizator/internal/infra"
+	"github.com/fu1se/spur/internal/adapter/cli"
+	"github.com/fu1se/spur/internal/adapter/controlclient"
+	"github.com/fu1se/spur/internal/domain"
+	"github.com/fu1se/spur/internal/infra"
 )
 
 func main() {

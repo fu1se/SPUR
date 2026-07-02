@@ -4,7 +4,7 @@ import (
 	"context"
 	"io"
 
-	"github.com/fu1se/localizator/internal/domain"
+	"github.com/fu1se/spur/internal/domain"
 )
 
 // Stream is a single bidirectional multiplexed channel within a

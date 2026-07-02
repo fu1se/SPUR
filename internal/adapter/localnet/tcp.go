@@ -1,6 +1,6 @@
 // Package localnet implements port.LocalListener and port.LocalDialer over
-// plain TCP: the initiator ("app connect") listens locally for
-// applications to forward, the responder ("app expose") dials the local
+// plain TCP: the initiator ("spur connect") listens locally for
+// applications to forward, the responder ("spur expose") dials the local
 // service being exposed for every incoming tunnel stream.
 package localnet
 
@@ -12,7 +12,7 @@ import (
 )
 
 // TCPListener implements port.LocalListener: it accepts local TCP
-// connections on Addr (used by "app connect" to accept the client
+// connections on Addr (used by "spur connect" to accept the client
 // application's connections before forwarding them through the tunnel).
 type TCPListener struct {
 	ln net.Listener
@@ -59,7 +59,7 @@ func (l *TCPListener) Addr() net.Addr {
 }
 
 // TCPDialer implements port.LocalDialer: it connects to Addr (used by
-// "app expose" to reach the local service being exposed, for every
+// "spur expose" to reach the local service being exposed, for every
 // incoming tunnel stream).
 type TCPDialer struct {
 	Addr string

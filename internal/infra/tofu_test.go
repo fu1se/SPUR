@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/fu1se/localizator/internal/infra"
+	"github.com/fu1se/spur/internal/infra"
 )
 
 func TestTOFUClientTLSConfig_PinsOnFirstConnect(t *testing.T) {

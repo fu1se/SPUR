@@ -3,7 +3,7 @@ package port
 import (
 	"context"
 
-	"github.com/fu1se/localizator/internal/domain"
+	"github.com/fu1se/spur/internal/domain"
 )
 
 // NetworkJoiner is the client's view of joining a mesh network over the

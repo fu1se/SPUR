@@ -9,11 +9,11 @@ import (
 
 	"golang.zx2c4.com/wireguard/device"
 
-	"github.com/fu1se/localizator/internal/adapter/controlclient"
-	"github.com/fu1se/localizator/internal/adapter/wgmesh"
-	"github.com/fu1se/localizator/internal/domain"
-	"github.com/fu1se/localizator/internal/infra"
-	"github.com/fu1se/localizator/internal/usecase/port"
+	"github.com/fu1se/spur/internal/adapter/controlclient"
+	"github.com/fu1se/spur/internal/adapter/wgmesh"
+	"github.com/fu1se/spur/internal/domain"
+	"github.com/fu1se/spur/internal/infra"
+	"github.com/fu1se/spur/internal/usecase/port"
 )
 
 // meshRefreshInterval bounds how long a peer that joins later can stay
@@ -22,7 +22,7 @@ import (
 // that makes periodic re-polling necessary rather than optional.
 const meshRefreshInterval = 5 * time.Second
 
-// join is "app join": coordinates mesh network membership with the
+// join is "spur join": coordinates mesh network membership with the
 // server, establishes a tunnel (P2P or relay, same EstablishSession/
 // adapter/tunnel machinery as port-forward mode) to every other member,
 // dedicates one stream per peer to carrying WireGuard traffic, and routes
@@ -76,7 +76,7 @@ func join(ctx context.Context, serverAddr, stunAddr, networkName, inviteToken, i
 	}
 
 	bind := wgmesh.NewBind()
-	logger := device.NewLogger(device.LogLevelError, "localizator: ")
+	logger := device.NewLogger(device.LogLevelError, "spur: ")
 	dev, err := wgmesh.NewDevice(bind, selfMeshIP, network.CIDR.Bits(), logger)
 	if err != nil {
 		return fmt.Errorf("app: create tun device: %w", err)

@@ -10,8 +10,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/fu1se/localizator/internal/usecase"
-	"github.com/fu1se/localizator/internal/usecase/port"
+	"github.com/fu1se/spur/internal/usecase"
+	"github.com/fu1se/spur/internal/usecase/port"
 )
 
 // fakeTunnelConn wraps a single pre-established net.Conn as a

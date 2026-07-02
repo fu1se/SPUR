@@ -1,6 +1,6 @@
 // Package localfs implements port.FileSource and port.FileSink over the
-// local filesystem: the sending side ("app send") walks a path (a single
-// file, or a directory, recursively), the receiving side ("app receive")
+// local filesystem: the sending side ("spur send") walks a path (a single
+// file, or a directory, recursively), the receiving side ("spur receive")
 // writes files under a destination directory, recreating the relative
 // directory structure the sender walked.
 package localfs
@@ -13,7 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/fu1se/localizator/internal/usecase/port"
+	"github.com/fu1se/spur/internal/usecase/port"
 )
 
 // Source implements port.FileSource rooted at Path — a single file, or a
