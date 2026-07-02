@@ -25,17 +25,39 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"sync/atomic"
 
 	"github.com/fu1se/spur/internal/domain"
 	"github.com/fu1se/spur/internal/usecase/port"
 )
+
+// CombineSalt merges the two peers' independently generated per-session
+// salts into the single value fed to deriveKeys as the HKDF salt. XOR is
+// used because it's commutative — both sides compute the identical result
+// regardless of which one they call "own" versus "peer" — without needing
+// a canonical ordering the way domain.SessionIDFor does for peer IDs.
+func CombineSalt(own, peer [32]byte) [32]byte {
+	var combined [32]byte
+	for i := range combined {
+		combined[i] = own[i] ^ peer[i]
+	}
+	return combined
+}
 
 // deriveKeys computes the two directional AEAD keys for a link between
 // self and counterpart from an X25519 shared secret. HKDF with distinct
 // "info" labels per direction guarantees dialer's send key equals
 // listener's recv key (and vice versa) without any extra coordination:
 // both sides run the same derivation, they just pick opposite roles.
-func deriveKeys(priv *ecdh.PrivateKey, peerPub domain.PublicKey, isDialer bool) (sendKey, recvKey [32]byte, err error) {
+//
+// salt (see CombineSalt) is mixed in specifically so that the derived keys
+// are unique per session: priv/peerPub are the peers' persistent
+// identities, so an ECDH of those two alone is identical across every
+// session two given peers ever establish, which — combined with each
+// Stream's nonce starting from a shared-but-still-small counter — risked
+// AES-GCM nonce reuse across process runs, not just across streams within
+// one run.
+func deriveKeys(priv *ecdh.PrivateKey, peerPub domain.PublicKey, salt [32]byte, isDialer bool) (sendKey, recvKey [32]byte, err error) {
 	remote, err := ecdh.X25519().NewPublicKey(peerPub[:])
 	if err != nil {
 		return sendKey, recvKey, fmt.Errorf("e2e: peer public key: %w", err)
@@ -46,11 +68,11 @@ func deriveKeys(priv *ecdh.PrivateKey, peerPub domain.PublicKey, isDialer bool) 
 		return sendKey, recvKey, fmt.Errorf("e2e: ecdh: %w", err)
 	}
 
-	keyToDialer, err := hkdf.Key(sha256.New, shared, nil, "spur-e2e-to-dialer", 32)
+	keyToDialer, err := hkdf.Key(sha256.New, shared, salt[:], "spur-e2e-to-dialer", 32)
 	if err != nil {
 		return sendKey, recvKey, fmt.Errorf("e2e: hkdf: %w", err)
 	}
-	keyToListener, err := hkdf.Key(sha256.New, shared, nil, "spur-e2e-to-listener", 32)
+	keyToListener, err := hkdf.Key(sha256.New, shared, salt[:], "spur-e2e-to-listener", 32)
 	if err != nil {
 		return sendKey, recvKey, fmt.Errorf("e2e: hkdf: %w", err)
 	}
@@ -71,18 +93,37 @@ func deriveKeys(priv *ecdh.PrivateKey, peerPub domain.PublicKey, isDialer bool) 
 // authenticated encryption keyed by priv and peerPub. isDialer must match
 // whatever value picked the transport role for conn (domain.IsDialer) —
 // it decides which of the two derived keys is "mine to send with" versus
-// "mine to receive with".
-func WrapConn(conn port.TunnelConn, priv *ecdh.PrivateKey, peerPub domain.PublicKey, isDialer bool) (port.TunnelConn, error) {
-	sendKey, recvKey, err := deriveKeys(priv, peerPub, isDialer)
+// "mine to receive with". salt must be CombineSalt(ownSalt, peerSalt) —
+// both sides compute the same value from their own and the exchanged
+// counterpart's domain.CandidateSet.Salt.
+func WrapConn(conn port.TunnelConn, priv *ecdh.PrivateKey, peerPub domain.PublicKey, salt [32]byte, isDialer bool) (port.TunnelConn, error) {
+	sendKey, recvKey, err := deriveKeys(priv, peerPub, salt, isDialer)
 	if err != nil {
 		return nil, err
 	}
-	return &wrappedConn{inner: conn, sendKey: sendKey, recvKey: recvKey}, nil
+	return &wrappedConn{
+		inner:     conn,
+		sendKey:   sendKey,
+		recvKey:   recvKey,
+		sendNonce: new(atomic.Uint64),
+		recvNonce: new(atomic.Uint64),
+	}, nil
 }
 
 type wrappedConn struct {
 	inner            port.TunnelConn
 	sendKey, recvKey [32]byte
+
+	// sendNonce/recvNonce are shared by every Stream this connection
+	// produces, not reset per stream: a wrappedConn's send/recv key pair is
+	// fixed for its whole lifetime, and AES-GCM requires every (key, nonce)
+	// pair to be used at most once. A per-stream counter starting at 0
+	// would let two concurrently open streams (e.g. two forwarded TCP
+	// connections through one `spur connect`) encrypt their first frame
+	// under the identical (key, nonce=0) pair — a two-time-pad break of
+	// both confidentiality and, per GCM's "forbidden attack", forgeable
+	// authentication for the rest of that key's lifetime.
+	sendNonce, recvNonce *atomic.Uint64
 }
 
 func (c *wrappedConn) OpenStream(ctx context.Context) (port.Stream, error) {
@@ -90,7 +131,7 @@ func (c *wrappedConn) OpenStream(ctx context.Context) (port.Stream, error) {
 	if err != nil {
 		return nil, err
 	}
-	return newStream(s, c.sendKey, c.recvKey)
+	return newStream(s, c.sendKey, c.recvKey, c.sendNonce, c.recvNonce)
 }
 
 func (c *wrappedConn) AcceptStream(ctx context.Context) (port.Stream, error) {
@@ -98,7 +139,7 @@ func (c *wrappedConn) AcceptStream(ctx context.Context) (port.Stream, error) {
 	if err != nil {
 		return nil, err
 	}
-	return newStream(s, c.sendKey, c.recvKey)
+	return newStream(s, c.sendKey, c.recvKey, c.sendNonce, c.recvNonce)
 }
 
 func (c *wrappedConn) Close() error { return c.inner.Close() }
@@ -110,14 +151,14 @@ type stream struct {
 	inner            port.Stream
 	sendAEAD         cipher.AEAD
 	recvAEAD         cipher.AEAD
-	sendNonce        uint64
-	recvNonce        uint64
+	sendNonce        *atomic.Uint64
+	recvNonce        *atomic.Uint64
 	pendingPlaintext []byte
 }
 
 const maxFrameSize = 65535
 
-func newStream(inner port.Stream, sendKey, recvKey [32]byte) (*stream, error) {
+func newStream(inner port.Stream, sendKey, recvKey [32]byte, sendNonce, recvNonce *atomic.Uint64) (*stream, error) {
 	sendAEAD, err := newAEAD(sendKey)
 	if err != nil {
 		return nil, err
@@ -126,7 +167,7 @@ func newStream(inner port.Stream, sendKey, recvKey [32]byte) (*stream, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &stream{inner: inner, sendAEAD: sendAEAD, recvAEAD: recvAEAD}, nil
+	return &stream{inner: inner, sendAEAD: sendAEAD, recvAEAD: recvAEAD, sendNonce: sendNonce, recvNonce: recvNonce}, nil
 }
 
 func newAEAD(key [32]byte) (cipher.AEAD, error) {
@@ -152,8 +193,8 @@ func (s *stream) Write(p []byte) (int, error) {
 		return 0, fmt.Errorf("e2e: write too large: %d bytes", len(p))
 	}
 
-	nonce := nonceFromCounter(s.sendAEAD, s.sendNonce)
-	s.sendNonce++
+	counter := s.sendNonce.Add(1) - 1
+	nonce := nonceFromCounter(s.sendAEAD, counter)
 	ciphertext := s.sendAEAD.Seal(nil, nonce, p, nil)
 
 	var lenBuf [4]byte
@@ -188,8 +229,8 @@ func (s *stream) Read(p []byte) (int, error) {
 		return 0, err
 	}
 
-	nonce := nonceFromCounter(s.recvAEAD, s.recvNonce)
-	s.recvNonce++
+	counter := s.recvNonce.Add(1) - 1
+	nonce := nonceFromCounter(s.recvAEAD, counter)
 	plaintext, err := s.recvAEAD.Open(nil, nonce, ciphertext, nil)
 	if err != nil {
 		return 0, fmt.Errorf("e2e: decrypt: %w", err)

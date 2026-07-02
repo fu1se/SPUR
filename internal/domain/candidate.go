@@ -26,4 +26,10 @@ type Candidate struct {
 type CandidateSet struct {
 	Candidates []Candidate
 	PublicKey  PublicKey
+	// Salt is 32 random bytes freshly generated for this publish call.
+	// Combined with the counterpart's own Salt (see e2e.CombineSalt), it
+	// keys the e2e HKDF derivation so the session key is unique per
+	// session instead of a static function of the two peers' identities
+	// alone.
+	Salt [32]byte
 }

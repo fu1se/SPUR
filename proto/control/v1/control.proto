@@ -34,6 +34,11 @@ message PublishCandidatesRequest {
                          // derive an end-to-end shared secret (Phase 7),
                          // independent of whatever transport (P2P or relay)
                          // ends up carrying the data
+  bytes salt = 5; // 32 random bytes, fresh per publish call. Both sides'
+                   // salts are combined into the e2e HKDF salt (see
+                   // adapter/e2e) so a given peer pair's session key is
+                   // unique per session instead of a static function of
+                   // their two identity keys alone.
 }
 
 message PublishCandidatesResponse {}
@@ -49,6 +54,8 @@ message AwaitCandidatesResponse {
   repeated Candidate candidates = 1;
   bytes public_key = 2; // the awaited peer's identity key, see
                          // PublishCandidatesRequest.public_key
+  bytes salt = 3; // the awaited peer's salt, see
+                   // PublishCandidatesRequest.salt
 }
 
 // RelayOpenRequest is the only framed message on a relay stream: after the

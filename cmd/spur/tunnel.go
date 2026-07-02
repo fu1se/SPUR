@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/tls"
 	"fmt"
 	"net"
@@ -127,10 +128,16 @@ func rendezvous(ctx context.Context, serverAddr, stunAddr, identityPath string, 
 
 	sessionID := domain.SessionIDFor(self, counterpart)
 
+	var ownSalt [32]byte
+	if _, err = rand.Read(ownSalt[:]); err != nil {
+		return nil, "", fmt.Errorf("app: generate session salt: %w", err)
+	}
+
 	exchange := usecase.ExchangeCandidates{Signaler: client}
 	peerSet, err := exchange.Execute(ctx, sessionID, self, counterpart, domain.CandidateSet{
 		Candidates: ownCandidates,
 		PublicKey:  id.PublicKey,
+		Salt:       ownSalt,
 	})
 	if err != nil {
 		return nil, "", fmt.Errorf("app: exchange candidates: %w", err)
@@ -166,7 +173,8 @@ func rendezvous(ctx context.Context, serverAddr, stunAddr, identityPath string, 
 	// server sees plaintext otherwise, P2P because the QUIC connection
 	// isn't authenticated against the peer's real identity yet
 	// (InsecureSkipVerify, Phase 7 follow-up).
-	encryptedConn, err := e2e.WrapConn(tunnelConn, id.PrivateKey, peerSet.PublicKey, isDialer)
+	sessionSalt := e2e.CombineSalt(ownSalt, peerSet.Salt)
+	encryptedConn, err := e2e.WrapConn(tunnelConn, id.PrivateKey, peerSet.PublicKey, sessionSalt, isDialer)
 	if err != nil {
 		return nil, "", fmt.Errorf("app: wrap end-to-end encryption: %w", err)
 	}

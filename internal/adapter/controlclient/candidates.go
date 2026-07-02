@@ -27,6 +27,7 @@ func (c *Client) PublishCandidates(ctx context.Context, sessionID string, self d
 		PeerId:     string(self),
 		Candidates: controlproto.CandidatesToProto(set.Candidates),
 		PublicKey:  set.PublicKey[:],
+		Salt:       set.Salt[:],
 	}); err != nil {
 		return err
 	}
@@ -61,6 +62,9 @@ func (c *Client) AwaitPeerCandidates(ctx context.Context, sessionID string, peer
 	if len(resp.GetPublicKey()) != len(domain.PublicKey{}) {
 		return domain.CandidateSet{}, fmt.Errorf("controlclient: peer public key has bad length %d", len(resp.GetPublicKey()))
 	}
+	if len(resp.GetSalt()) != 32 {
+		return domain.CandidateSet{}, fmt.Errorf("controlclient: peer salt has bad length %d", len(resp.GetSalt()))
+	}
 
 	candidates, err := controlproto.CandidatesFromProto(resp.GetCandidates())
 	if err != nil {
@@ -69,6 +73,8 @@ func (c *Client) AwaitPeerCandidates(ctx context.Context, sessionID string, peer
 
 	var pub domain.PublicKey
 	copy(pub[:], resp.GetPublicKey())
+	var salt [32]byte
+	copy(salt[:], resp.GetSalt())
 
-	return domain.CandidateSet{Candidates: candidates, PublicKey: pub}, nil
+	return domain.CandidateSet{Candidates: candidates, PublicKey: pub, Salt: salt}, nil
 }
