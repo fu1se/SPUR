@@ -2,8 +2,16 @@
 // It is the outermost adapter for the interactive entrypoint of the
 // application; it must not contain business logic itself, and it must not
 // construct concrete adapter/infra implementations directly — those are
-// wired in cmd/app (the composition root) and handed to this package as
-// plain functions via Dependencies.
+// wired in the composition roots (cmd/app for the client, cmd/server for
+// the server) and handed to this package as plain functions via
+// ClientDependencies/ServerDependencies.
+//
+// The client and server are separate binaries (cmd/app, cmd/server) so
+// the client doesn't have to link in server-only weight (SQLite driver,
+// controlserver, STUN responder) it never runs — see CLAUDE.md's
+// "Разделение клиента и сервера" for why. This package still builds both
+// command trees, since translating flags to use case calls is the same
+// kind of work either way; only the composition roots differ.
 package cli
 
 import (
@@ -16,16 +24,22 @@ import (
 // version is set at build time via -ldflags "-X ... version=...".
 var version = "dev"
 
-// Defaults holds fallback values for flags a user would otherwise have to
-// retype on every invocation (--server, --stun-server, --identity). Loaded
-// from a config file in cmd/app (an infra concern — this package must not
-// touch disk itself); zero values here just mean the flag keeps its
-// original empty default, so an absent config file changes nothing.
-type Defaults struct {
-	Server      string
-	StunServer  string
-	Identity    string
-	ServerState string
+// ClientDefaults holds fallback values for client flags a user would
+// otherwise have to retype on every invocation (--server, --stun-server,
+// --identity). Loaded from a config file in cmd/app (an infra concern —
+// this package must not touch disk itself); zero values here just mean
+// the flag keeps its original empty default, so an absent config file
+// changes nothing.
+type ClientDefaults struct {
+	Server     string
+	StunServer string
+	Identity   string
+}
+
+// ServerDefaults holds fallback values for server flags, loaded in
+// cmd/server.
+type ServerDefaults struct {
+	State string
 }
 
 // RegisterResult is what a successful control-plane registration reports
@@ -50,17 +64,10 @@ type JoinNetworkResult struct {
 	InviteToken string // share with whoever should join this network next
 }
 
-// Dependencies holds the wired entrypoints each subcommand calls into.
-// Every field is populated in cmd/app; commands never know what concrete
-// adapters sit behind them.
-type Dependencies struct {
-	// RunServer starts the rendezvous/control-plane server plus its STUN
-	// endpoint and blocks until ctx is cancelled. dbPath is where server
-	// state (peers, mesh networks) persists across restarts — see
-	// adapter/repository/sqlite. verbose switches operational logging
-	// from info to debug level.
-	RunServer func(ctx context.Context, listenAddr, stunAddr, dbPath string, verbose bool) error
-
+// ClientDependencies holds the wired entrypoints each client subcommand
+// calls into. Every field is populated in cmd/app; commands never know
+// what concrete adapters sit behind them.
+type ClientDependencies struct {
 	// Register dials a control-plane server and registers an (ephemeral,
 	// until Phase 7) identity with it.
 	Register func(ctx context.Context, serverAddr string) (RegisterResult, error)
@@ -102,20 +109,31 @@ type Dependencies struct {
 	Join func(ctx context.Context, serverAddr, stunAddr, networkName, inviteToken, identityPath string, onSelfID func(selfID string)) error
 }
 
-// NewRootCommand builds the root cobra command with all subcommands wired
-// against deps. defaults pre-fills flags from a config file; every field
-// can still be overridden per-invocation by passing the flag explicitly.
-func NewRootCommand(deps Dependencies, defaults Defaults) *cobra.Command {
+// ServerDependencies holds the wired entrypoint the server binary's root
+// command calls into.
+type ServerDependencies struct {
+	// RunServer starts the rendezvous/control-plane server plus its STUN
+	// endpoint and blocks until ctx is cancelled. dbPath is where server
+	// state (peers, mesh networks) persists across restarts — see
+	// adapter/repository/sqlite. verbose switches operational logging
+	// from info to debug level.
+	RunServer func(ctx context.Context, listenAddr, stunAddr, dbPath string, verbose bool) error
+}
+
+// NewClientRootCommand builds the client binary's root cobra command
+// (app) with all client subcommands wired against deps. defaults
+// pre-fills flags from a config file; every field can still be overridden
+// per-invocation by passing the flag explicitly.
+func NewClientRootCommand(deps ClientDependencies, defaults ClientDefaults) *cobra.Command {
 	root := &cobra.Command{
 		Use:           "app",
-		Short:         "localizator — прямое подключение в локальную сеть в обход NAT",
+		Short:         "localizator — прямое подключение в локальную сеть в обход NAT (клиент)",
 		SilenceUsage:  true,
 		SilenceErrors: false,
 	}
 
 	root.AddCommand(
 		newVersionCommand(),
-		newServerCommand(deps, defaults),
 		newRegisterCommand(deps, defaults),
 		newWhoamiCommand(deps, defaults),
 		newConnectCommand(deps, defaults),
@@ -123,6 +141,34 @@ func NewRootCommand(deps Dependencies, defaults Defaults) *cobra.Command {
 		newJoinCommand(deps, defaults),
 		newJoinNetworkCommand(deps, defaults),
 	)
+
+	return root
+}
+
+// NewServerRootCommand builds the server binary's root cobra command
+// (app-server). Serving is the root command's own action — there is
+// nothing else this binary does — with "version" as its only subcommand.
+func NewServerRootCommand(deps ServerDependencies, defaults ServerDefaults) *cobra.Command {
+	var listenAddr, stunAddr, dbPath string
+	var verbose bool
+
+	root := &cobra.Command{
+		Use:           "app-server",
+		Short:         "localizator — rendezvous/signaling-сервер (control plane + STUN + relay fallback)",
+		SilenceUsage:  true,
+		SilenceErrors: false,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cmd.Printf("control-plane слушает на %s, STUN — на %s, состояние — в %s\n", listenAddr, stunAddr, dbPath)
+			return deps.RunServer(cmd.Context(), listenAddr, stunAddr, dbPath, verbose)
+		},
+	}
+
+	root.Flags().StringVar(&listenAddr, "listen", ":4443", "адрес control-канала (QUIC)")
+	root.Flags().StringVar(&stunAddr, "stun-listen", ":4444", "адрес STUN-эндпоинта (UDP)")
+	root.Flags().StringVar(&dbPath, "db", defaults.State, "путь к файлу состояния сервера (SQLite)")
+	root.Flags().BoolVar(&verbose, "verbose", false, "подробные (debug-уровня) логи вместо info")
+
+	root.AddCommand(newVersionCommand())
 
 	return root
 }

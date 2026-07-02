@@ -10,7 +10,7 @@ import (
 // end to end: dial the server, register, print back what the server saw.
 // It exists to validate the control-plane independently of the data-plane
 // modes (connect/join) that later phases build on top of it.
-func newRegisterCommand(deps Dependencies, defaults Defaults) *cobra.Command {
+func newRegisterCommand(deps ClientDependencies, defaults ClientDefaults) *cobra.Command {
 	var serverAddr = defaults.Server
 
 	cmd := &cobra.Command{

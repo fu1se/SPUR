@@ -8,7 +8,7 @@ RELEASE_PLATFORMS := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/a
 .PHONY: help
 help:
 	@echo "targets:"
-	@echo "  build    - build ./$(BIN_DIR)/app for the current platform"
+	@echo "  build    - build ./$(BIN_DIR)/app (client) and ./$(BIN_DIR)/app-server for the current platform"
 	@echo "  test     - go test ./... -race"
 	@echo "  vet      - go vet + gofmt -l (fails if any file is unformatted)"
 	@echo "  fmt      - gofmt -w every .go file"
@@ -20,6 +20,7 @@ help:
 build:
 	mkdir -p $(BIN_DIR)
 	go build -trimpath -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/app ./cmd/app
+	go build -trimpath -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/app-server ./cmd/server
 
 .PHONY: test
 test:
@@ -52,6 +53,8 @@ release: clean
 		echo "building $(platform)..."; \
 		GOOS=$(GOOS) GOARCH=$(GOARCH) CGO_ENABLED=0 go build -trimpath -ldflags "$(LDFLAGS)" \
 			-o $(DIST_DIR)/app-$(GOOS)-$(GOARCH)$(EXT) ./cmd/app || exit 1; \
+		GOOS=$(GOOS) GOARCH=$(GOARCH) CGO_ENABLED=0 go build -trimpath -ldflags "$(LDFLAGS)" \
+			-o $(DIST_DIR)/app-server-$(GOOS)-$(GOARCH)$(EXT) ./cmd/server || exit 1; \
 	)
 
 .PHONY: clean

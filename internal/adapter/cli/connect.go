@@ -6,7 +6,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func newConnectCommand(deps Dependencies, defaults Defaults) *cobra.Command {
+func newConnectCommand(deps ClientDependencies, defaults ClientDefaults) *cobra.Command {
 	var (
 		serverAddr   = defaults.Server
 		stunAddr     = defaults.StunServer

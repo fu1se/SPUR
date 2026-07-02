@@ -12,7 +12,7 @@ import (
 // the same reason `register` did for Phase 2: validate the control-plane
 // piece independently of the data-plane piece (`app join`) that isn't
 // wired up yet.
-func newJoinNetworkCommand(deps Dependencies, defaults Defaults) *cobra.Command {
+func newJoinNetworkCommand(deps ClientDependencies, defaults ClientDefaults) *cobra.Command {
 	var (
 		serverAddr   = defaults.Server
 		networkName  string

@@ -6,7 +6,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func newWhoamiCommand(deps Dependencies, defaults Defaults) *cobra.Command {
+func newWhoamiCommand(deps ClientDependencies, defaults ClientDefaults) *cobra.Command {
 	var identityPath = defaults.Identity
 
 	cmd := &cobra.Command{

@@ -1,30 +1,26 @@
-// Command app is the composition root: it wires concrete adapter/infra
-// implementations into use cases and hands control to the CLI. No business
-// logic lives here.
+// Command app is the client composition root: it wires concrete
+// adapter/infra implementations into use cases and hands control to the
+// CLI. No business logic lives here.
+//
+// This binary deliberately does not import controlserver, stunserver, or
+// adapter/repository (sqlite or memory) — those are server-only weight,
+// wired instead in cmd/server. Keeping them out of this build is the
+// whole point of the split: a client running "app connect" has no reason
+// to link in a SQLite driver it will never open.
 package main
 
 import (
 	"context"
 	"crypto/rand"
 	"fmt"
-	"net"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"syscall"
-
-	"golang.org/x/sync/errgroup"
 
 	"github.com/fu1se/localizator/internal/adapter/cli"
 	"github.com/fu1se/localizator/internal/adapter/controlclient"
-	"github.com/fu1se/localizator/internal/adapter/controlproto"
-	"github.com/fu1se/localizator/internal/adapter/controlserver"
-	"github.com/fu1se/localizator/internal/adapter/repository/memory"
-	"github.com/fu1se/localizator/internal/adapter/repository/sqlite"
-	"github.com/fu1se/localizator/internal/adapter/stunserver"
 	"github.com/fu1se/localizator/internal/domain"
 	"github.com/fu1se/localizator/internal/infra"
-	"github.com/fu1se/localizator/internal/usecase"
 )
 
 func main() {
@@ -37,8 +33,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	root := cli.NewRootCommand(cli.Dependencies{
-		RunServer:   runServer,
+	root := cli.NewClientRootCommand(cli.ClientDependencies{
 		Register:    register,
 		Connect:     connect,
 		Expose:      expose,
@@ -53,96 +48,22 @@ func main() {
 }
 
 // loadDefaults reads the optional config file (see infra.Config's doc
-// comment) into cli.Defaults. A missing file just means every flag keeps
-// its original empty default — the config file is purely additive.
-// ServerState isn't read from the config file (there's normally exactly
-// one server, so there's little to save by not retyping --db); it's just
-// infra.DefaultServerStatePath() so --db has a sane default too.
-func loadDefaults() (cli.Defaults, error) {
+// comment) into cli.ClientDefaults. A missing file just means every flag
+// keeps its original empty default — the config file is purely additive.
+func loadDefaults() (cli.ClientDefaults, error) {
 	path, err := infra.DefaultConfigPath()
 	if err != nil {
-		return cli.Defaults{}, err
+		return cli.ClientDefaults{}, err
 	}
 	cfg, err := infra.LoadConfig(path)
 	if err != nil {
-		return cli.Defaults{}, err
+		return cli.ClientDefaults{}, err
 	}
-	statePath, err := infra.DefaultServerStatePath()
-	if err != nil {
-		return cli.Defaults{}, err
-	}
-	return cli.Defaults{
-		Server:      cfg.Server,
-		StunServer:  cfg.StunServer,
-		Identity:    cfg.Identity,
-		ServerState: statePath,
+	return cli.ClientDefaults{
+		Server:     cfg.Server,
+		StunServer: cfg.StunServer,
+		Identity:   cfg.Identity,
 	}, nil
-}
-
-// runServer wires the SQLite-backed peer/network repositories, the
-// in-memory candidate broker and relay broker, and their use cases into
-// the control-plane QUIC server, then runs the STUN responder alongside
-// it. Peers and mesh networks now survive a restart (adapter/repository/
-// sqlite); candidates and relay splices stay in-memory because they are
-// inherently short-lived, in-flight coordination state with nothing
-// meaningful to persist (see that package's doc comment). Control-plane
-// and STUN run on separate UDP ports (see stunserver's package doc for
-// why); both are bound up front so a failure to bind either port surfaces
-// immediately instead of racing the accept loop. verbose is threaded into
-// the server's zerolog.Logger — every request handler used to drop its
-// errors silently, leaving an operator with zero visibility.
-func runServer(ctx context.Context, controlAddr, stunAddr, dbPath string, verbose bool) error {
-	logger := infra.NewLogger(verbose)
-
-	certPath, err := infra.DefaultServerCertPath()
-	if err != nil {
-		return err
-	}
-	tlsConf, err := infra.LoadOrCreateServerTLSConfig(certPath, controlproto.ALPN)
-	if err != nil {
-		return fmt.Errorf("app: tls config: %w", err)
-	}
-
-	controlConn, err := net.ListenPacket("udp", controlAddr)
-	if err != nil {
-		return fmt.Errorf("app: bind control-plane: %w", err)
-	}
-
-	stunUDPAddr, err := net.ResolveUDPAddr("udp", stunAddr)
-	if err != nil {
-		return fmt.Errorf("app: resolve stun addr: %w", err)
-	}
-	stunConn, err := net.ListenUDP("udp", stunUDPAddr)
-	if err != nil {
-		return fmt.Errorf("app: bind stun: %w", err)
-	}
-
-	if err := os.MkdirAll(filepath.Dir(dbPath), 0o700); err != nil {
-		return fmt.Errorf("app: create state dir: %w", err)
-	}
-	db, err := sqlite.Open(dbPath)
-	if err != nil {
-		return fmt.Errorf("app: open state db: %w", err)
-	}
-	defer db.Close()
-
-	peers := sqlite.NewPeerRepository(db)
-	networks := sqlite.NewNetworkRepository(db)
-	candidateBroker := memory.NewCandidateBroker()
-	relayBroker := memory.NewRelayBroker()
-	srv := &controlserver.Server{
-		RegisterPeer:      usecase.RegisterPeer{Peers: peers},
-		PublishCandidates: usecase.PublishCandidates{Store: candidateBroker},
-		AwaitCandidates:   usecase.AwaitCandidates{Store: candidateBroker},
-		RelayFallback:     usecase.RelayFallback{Broker: relayBroker},
-		JoinNetwork:       usecase.JoinNetwork{Networks: networks},
-		Logger:            &logger,
-	}
-
-	g, gctx := errgroup.WithContext(ctx)
-	g.Go(func() error { return srv.Serve(gctx, controlConn, tlsConf, infra.DefaultQUICConfig()) })
-	g.Go(func() error { return stunserver.Serve(gctx, stunConn) })
-	return g.Wait()
 }
 
 // register dials serverAddr and registers an ephemeral identity. Real,
@@ -194,7 +115,7 @@ func whoami(identityPath string) (string, error) {
 
 // joinNetwork loads (or creates) the local identity and joins a mesh
 // network on the server, returning its current membership. Control-plane
-// only — see cli.Dependencies.JoinNetwork's doc comment.
+// only — see cli.ClientDependencies.JoinNetwork's doc comment.
 func joinNetwork(ctx context.Context, serverAddr, networkName, inviteToken, identityPath string) (cli.JoinNetworkResult, error) {
 	resolvedIdentityPath, err := resolveIdentityPath(identityPath)
 	if err != nil {
