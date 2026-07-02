@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"reflect"
 	"sync"
 
 	"github.com/fu1se/spur/internal/domain"
@@ -121,6 +122,19 @@ func (r *NetworkRepository) Update(ctx context.Context, name string, mutate func
 	updated, err := mutate(current)
 	if err != nil {
 		return domain.Network{}, err
+	}
+
+	if reflect.DeepEqual(current, updated) {
+		// A no-op update -- the common case for cmd/spur's mesh join, which
+		// re-polls JoinNetwork every few seconds from every member as a
+		// liveness/discovery heartbeat (see "Фаза 6" in CLAUDE.md), and
+		// most of those calls find the caller already a member with
+		// nothing new to add. Without this check, save() unconditionally
+		// deletes and re-inserts every member row inside the mutex-held
+		// transaction on every single one of those heartbeats -- O(members)
+		// writes, O(members^2) total across a network, for changing
+		// nothing.
+		return updated, nil
 	}
 
 	if err := r.save(ctx, updated); err != nil {

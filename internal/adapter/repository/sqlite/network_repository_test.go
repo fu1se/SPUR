@@ -97,6 +97,44 @@ func TestNetworkRepository_FindByInviteToken(t *testing.T) {
 // repository to prove Update's mutex genuinely serializes writers against
 // a real SQLite file, not just against the in-memory map the original
 // implementation used.
+// TestNetworkRepository_NoOpUpdateSkipsWrite is a performance regression
+// test: cmd/spur's mesh join re-polls JoinNetwork every few seconds from
+// every member purely as a liveness heartbeat, and Update's mutate
+// callback for an already-known member returns the network unchanged.
+// Without a short-circuit, save() unconditionally deletes and re-inserts
+// every member row on every one of those heartbeats. total_changes()
+// (SQLite's own running count of rows modified since the connection
+// opened) must not move for a no-op Update.
+func TestNetworkRepository_NoOpUpdateSkipsWrite(t *testing.T) {
+	db, err := sqlite.Open(filepath.Join(t.TempDir(), "test.db"))
+	require.NoError(t, err)
+	defer db.Close()
+
+	repo := sqlite.NewNetworkRepository(db)
+
+	member := domain.MeshMember{PeerID: "peer-a", MeshIP: netip.MustParseAddr("100.64.0.1")}
+	_, err = repo.Update(context.Background(), "home", func(n domain.Network) (domain.Network, error) {
+		n.CIDR = netip.MustParsePrefix("100.64.0.0/10")
+		n.Members = append(n.Members, member)
+		return n, nil
+	})
+	require.NoError(t, err)
+
+	var before int
+	require.NoError(t, db.QueryRow(`SELECT total_changes()`).Scan(&before))
+
+	// Idempotent re-join: the caller is already a member, so the real
+	// usecase.JoinNetwork's mutate callback returns the network as-is.
+	_, err = repo.Update(context.Background(), "home", func(n domain.Network) (domain.Network, error) {
+		return n, nil
+	})
+	require.NoError(t, err)
+
+	var after int
+	require.NoError(t, db.QueryRow(`SELECT total_changes()`).Scan(&after))
+	require.Equal(t, before, after, "a no-op Update should not have written anything")
+}
+
 func TestNetworkRepository_ConcurrentUpdatesDontLoseMembers(t *testing.T) {
 	db, err := sqlite.Open(filepath.Join(t.TempDir(), "test.db"))
 	require.NoError(t, err)

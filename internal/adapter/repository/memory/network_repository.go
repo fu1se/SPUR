@@ -32,10 +32,22 @@ func (r *NetworkRepository) FindByName(_ context.Context, name string) (domain.N
 	return network, nil
 }
 
-// FindByInviteToken is not yet meaningful: invite tokens are introduced in
-// the auth phase (CLAUDE.md roadmap, Phase 7). Networks are currently
-// joinable by name alone.
-func (r *NetworkRepository) FindByInviteToken(_ context.Context, _ string) (domain.Network, error) {
+// FindByInviteToken mirrors sqlite.NetworkRepository's implementation. Not
+// currently called by any production path (usecase.JoinNetwork checks
+// network.InviteToken directly inside its Update mutate closure instead of
+// going through this method), but this package also serves as the
+// lightweight test double for PeerRepository/NetworkRepository in
+// usecase/adapter unit tests — leaving it always-failing here would make
+// this double silently diverge from the real sqlite behavior for anyone
+// who does write a test against it expecting invite-token lookup to work.
+func (r *NetworkRepository) FindByInviteToken(_ context.Context, token string) (domain.Network, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, network := range r.networks {
+		if network.InviteToken == token {
+			return network, nil
+		}
+	}
 	return domain.Network{}, domain.ErrNetworkNotFound
 }
 
