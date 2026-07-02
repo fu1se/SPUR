@@ -107,6 +107,18 @@ type ClientDependencies struct {
 	// Linux). inviteToken: see JoinNetwork. onSelfID: see Connect. Blocks
 	// until ctx is cancelled.
 	Join func(ctx context.Context, serverAddr, stunAddr, networkName, inviteToken, identityPath string, onSelfID func(selfID string)) error
+
+	// Send is "app send": rendezvous with peerID and stream path (a file
+	// or a directory, walked recursively) through the tunnel to whoever
+	// runs "app receive" against the same peerID. identityPath, onSelfID:
+	// see Connect. Blocks until the transfer finishes or fails.
+	Send func(ctx context.Context, serverAddr, stunAddr, peerID, identityPath, path string, onSelfID func(selfID string)) error
+
+	// Receive is "app receive": rendezvous with peerID and write whatever
+	// "app send" streams through the tunnel under destDir, recreating the
+	// relative directory structure the sender walked. identityPath,
+	// onSelfID: see Connect. Blocks until the transfer finishes or fails.
+	Receive func(ctx context.Context, serverAddr, stunAddr, peerID, identityPath, destDir string, onSelfID func(selfID string)) error
 }
 
 // ServerDependencies holds the wired entrypoint the server binary's root
@@ -140,6 +152,8 @@ func NewClientRootCommand(deps ClientDependencies, defaults ClientDefaults) *cob
 		newExposeCommand(deps, defaults),
 		newJoinCommand(deps, defaults),
 		newJoinNetworkCommand(deps, defaults),
+		newSendCommand(deps, defaults),
+		newReceiveCommand(deps, defaults),
 	)
 
 	return root

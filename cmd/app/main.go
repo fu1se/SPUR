@@ -40,6 +40,8 @@ func main() {
 		Whoami:      whoami,
 		JoinNetwork: joinNetwork,
 		Join:        join,
+		Send:        send,
+		Receive:     receive,
 	}, defaults)
 
 	if err := root.ExecuteContext(ctx); err != nil {
