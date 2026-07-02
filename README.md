@@ -1,230 +1,233 @@
 # spur
 
-CLI-приложение и rendezvous-сервер для прямого подключения в локальную
-сеть в обход NAT — P2P-туннель с UDP hole punching и автоматическим
-fallback на relay через сервер, если punching не удался.
+English | [Русский](README.ru.md)
 
-Режимы:
+A CLI app and rendezvous server for connecting directly into a local
+network across NAT — a P2P tunnel with UDP hole punching and automatic
+fallback to relay through the server if punching fails.
 
-- **port-forward** (`connect`/`expose`) — пробросить один порт с одной
-  машины на другую, как `ngrok`/`frp`.
-- **mesh VPN** (`join`) — полноценная сетевая связность между всеми
-  участниками сети через реальный TUN-интерфейс и WireGuard, как
-  `tailscale`.
-- **передача файлов** (`send`/`receive`) — отправить файл или директорию
-  напрямую пиру, без промежуточного сервиса.
+Modes:
 
-Весь трафик данных шифруется end-to-end по ключам участников независимо
-от того, прошло соединение напрямую (P2P) или через relay-сервер —
-сервер физически не может прочитать содержимое.
+- **port-forward** (`connect`/`expose`) — forward a single port from one
+  machine to another, like `ngrok`/`frp`.
+- **mesh VPN** (`join`) — full network connectivity between every member
+  of a network over a real TUN interface and WireGuard, like `tailscale`.
+- **file transfer** (`send`/`receive`) — send a file or directory
+  directly to a peer, with no intermediate service.
 
-Клиент и сервер — два отдельных бинарника (`spur` и `spur-server`), не один
-с подкомандами: клиенту незачем тянуть за собой SQLite-драйвер и
-control-plane сервера, которыми он никогда не пользуется.
+All data traffic is end-to-end encrypted with the participants' own keys
+regardless of whether the connection went direct (P2P) or through the
+relay server — the server is physically unable to read the content.
 
-## Установка
+The client and server are two separate binaries (`spur` and
+`spur-server`), not one with subcommands: the client has no reason to
+pull in the SQLite driver and control-plane server it never uses.
 
-Самый простой способ (Linux/macOS, не нужен Go) — скачивает готовые
-бинарники под вашу платформу с последнего
-[релиза](https://github.com/fu1se/SPUR/releases) и **автоматически
-добавляет их в `PATH`**: определяет ваш шелл (bash/zsh/fish) и дописывает
-нужную строку в соответствующий rc-файл, если каталога установки там ещё
-нет.
+## Installation
+
+The simplest way (Linux/macOS, no Go required) — downloads a ready-built
+binary for your platform from the latest
+[release](https://github.com/fu1se/SPUR/releases) and **automatically
+adds it to `PATH`**: detects your shell (bash/zsh/fish) and appends the
+right line to the corresponding rc file, if the install directory isn't
+already there.
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/fu1se/SPUR/master/install.sh | sh
 ```
 
-По умолчанию ставит в `~/.local/bin`; другой каталог — через
-`SPUR_INSTALL_DIR=/куда/нужно sh install.sh`. Скрипт идемпотентен — можно
-гонять повторно, дублей в rc-файл не добавит. Если каталог только что
-добавлен в `PATH`, эффект будет виден после перезапуска шелла (или
-`source ~/.bashrc`/`~/.zshrc`/`~/.config/fish/config.fish` — какой
-именно, скрипт скажет сам) — запущенный скрипт физически не может
-поменять `PATH` уже открытого родительского шелла, это ограничение самих
-шеллов, не что-то, что можно обойти.
+Installs into `~/.local/bin` by default; a different directory via
+`SPUR_INSTALL_DIR=/wherever sh install.sh`. The script is idempotent —
+safe to re-run, it won't add duplicate lines to your rc file. If the
+directory was just added to `PATH`, the effect shows up after restarting
+your shell (or `source ~/.bashrc`/`~/.zshrc`/`~/.config/fish/config.fish`
+— the script tells you which) — a running script physically cannot
+change the `PATH` of an already-open parent shell; that's a limitation
+of shells themselves, not something to work around.
 
-На Windows автоматики нет — скачайте `spur-windows-amd64.exe`/
-`spur-server-windows-amd64.exe` с той же страницы релизов и добавьте их
-папку в `PATH` через «Переменные среды» вручную.
+No automation on Windows — download `spur-windows-amd64.exe`/
+`spur-server-windows-amd64.exe` from the same releases page and add their
+folder to `PATH` manually via "Environment Variables".
 
-Собрать и поставить из исходников (нужен Go 1.26+, см. `go.mod`) — тот же install.sh
-под капотом, поэтому PATH настраивается точно так же автоматически:
+Building and installing from source (needs Go 1.26+, see `go.mod`) —
+the same install.sh under the hood, so `PATH` gets set up automatically
+the same way:
 
 ```sh
 git clone https://github.com/fu1se/SPUR.git
 cd SPUR
-make install        # соберёт и поставит + настроит PATH
+make install        # builds and installs + sets up PATH
 ```
 
-`make build` (без `install`) просто собирает `./bin/spur` и
-`./bin/spur-server`, ничего никуда не копируя — если нужен именно этот
-вариант. Кросс-компиляция под все платформы: `make release` (см. `make
-help`).
+`make build` (without `install`) just builds `./bin/spur` and
+`./bin/spur-server`, without copying anything anywhere — if that's what
+you need instead. Cross-compiling for every platform: `make release`
+(see `make help`).
 
-`spur` устанавливается на каждую машину, которая будет подключаться к
-другим. `spur-server` — только на одну машину с публичным IP
-(rendezvous-сервер).
+`spur` is installed on every machine that will connect to others.
+`spur-server` — only on one machine with a public IP (the rendezvous
+server).
 
-## Поднятие сервера
+## Running the server
 
-Сервер нужен один на всю систему — он знакомит клиентов между собой и
-помогает пробить NAT, но по умолчанию не видит и не проксирует
-пользовательский трафик (кроме fallback-relay, когда P2P punching не
-удался, и то — только зашифрованные end-to-end байты).
+One server is needed for the whole system — it introduces clients to
+each other and helps punch through NAT, but by default doesn't see or
+proxy user traffic (except for fallback relay, when P2P punching fails,
+and even then — only end-to-end encrypted bytes).
 
-Запуск на машине с публичным IP:
+Running it on a machine with a public IP:
 
 ```sh
 spur-server --listen :4443 --stun-listen :4444
 ```
 
-Флаги:
+Flags:
 
-| Флаг | По умолчанию | Что делает |
+| Flag | Default | What it does |
 |---|---|---|
-| `--listen` | `:4443` | адрес control-канала (QUIC) |
-| `--stun-listen` | `:4444` | адрес STUN-эндпоинта (UDP) — нужен клиентам, чтобы узнать свой публичный `ip:port` |
-| `--db` | `~/.config/spur/state.db` | файл состояния (SQLite) — зарегистрированные пиры, mesh-сети и их участники |
-| `--verbose` | выкл. | подробные (debug-уровня) логи вместо info |
+| `--listen` | `:4443` | control-channel address (QUIC) |
+| `--stun-listen` | `:4444` | STUN endpoint address (UDP) — clients need it to learn their own public `ip:port` |
+| `--db` | `~/.config/spur/state.db` | state file (SQLite) — registered peers, mesh networks and their members |
+| `--verbose` | off | verbose (debug-level) logs instead of info |
 
-Оба порта (`--listen` и `--stun-listen`) должны быть доступны снаружи —
-пробросьте их на роутере/в security group, если сервер сам за NAT или
-файрволом.
+Both ports (`--listen` and `--stun-listen`) need to be reachable from the
+outside — forward them on your router/security group if the server
+itself is behind NAT or a firewall.
 
-Состояние сервера персистентно: рестарт (`systemd`, падение, обновление
-бинарника) не теряет зарегистрированных пиров и mesh-сети — они лежат в
-SQLite-файле из `--db`. Логи идут в stderr; для systemd-сервиса это
-само собой попадёт в `journalctl`.
+Server state is persistent: a restart (`systemd`, a crash, a binary
+upgrade) doesn't lose registered peers and mesh networks — they live in
+the SQLite file from `--db`. Logs go to stderr; for a systemd service
+that ends up in `journalctl` automatically.
 
-Проверить, что сервер жив и достижим, можно с клиента командой
-`spur register` (см. ниже) — она не требует никакой предварительной
-настройки, кроме адреса сервера.
+To check the server is alive and reachable, run `spur register` (see
+below) from a client — it needs no prior setup besides the server
+address.
 
-## Быстрый старт клиента
+## Client quick start
 
-### 1. Узнать свой peer-id
+### 1. Find your peer-id
 
-Каждый клиент идентифицируется своим `peer-id`, который другие
-указывают в `--to`. ID выводится локально, без обращения к сети:
+Every client is identified by its `peer-id`, which others pass in
+`--to`. The ID is printed locally, with no network access:
 
 ```sh
 spur whoami
 ```
 
-Идентичность (X25519-ключ) генерируется при первом запуске и
-сохраняется в `~/.config/spur/identity.key` — при последующих
-запусках `whoami` возвращает тот же ID. Без этого две стороны не могли
-бы заранее узнать ID друг друга до первого реального подключения.
+The identity (an X25519 key) is generated on first run and saved to
+`~/.config/spur/identity.key` — subsequent runs of `whoami` return the
+same ID. Without this, the two sides would have no way to learn each
+other's ID ahead of the first real connection.
 
-Чтобы обменяться ID, участникам нужно вручную (в чате, голосом и т.п.)
-сообщить друг другу вывод `spur whoami` — сервер этого за них не делает.
+To exchange IDs, participants need to share the output of `spur whoami`
+with each other manually (chat, voice, whatever) — the server doesn't do
+this for them.
 
-### 2. Проверить связь с сервером
+### 2. Check connectivity to the server
 
-Необязательный диагностический шаг — зарегистрироваться на сервере и
-посмотреть, какой адрес он для вас видит (полезно для отладки NAT):
+An optional diagnostic step — register with the server and see what
+address it observes for you (useful for debugging NAT):
 
 ```sh
 spur register --server SERVER:4443
 ```
 
-Выведет `peer-id` и `observed-address` (ваш публичный `ip:port`, как
-его увидел сервер).
+Prints `peer-id` and `observed-address` (your public `ip:port`, as seen
+by the server).
 
-## Все действия клиента
+## All client actions
 
-### Проброс одного порта: `connect` / `expose`
+### Single port forwarding: `connect` / `expose`
 
-Аналог `ssh -L`/`ngrok`, но напрямую P2P (или через relay, если не
-получилось). Одна сторона открывает локальный сервис (`expose`),
-другая к нему подключается (`connect`).
+Like `ssh -L`/`ngrok`, but directly P2P (or via relay if that fails).
+One side exposes a local service (`expose`), the other connects to it
+(`connect`).
 
-На машине с сервисом (например, SSH на 22 порту):
+On the machine with the service (e.g. SSH on port 22):
 
 ```sh
 spur expose --server SERVER:4443 --stun-server SERVER:4444 \
-  --to <peer-id того, кто будет подключаться> --port 22
+  --to <peer-id of whoever will connect> --port 22
 ```
 
-На машине, которая подключается:
+On the connecting machine:
 
 ```sh
 spur connect --server SERVER:4443 --stun-server SERVER:4444 \
-  --to <peer-id машины с сервисом> --local-port 2222
+  --to <peer-id of the machine with the service> --local-port 2222
 ```
 
-После этого `localhost:2222` на стороне `connect` пробрасывается на
-порт `22` удалённой машины. Обе команды блокируют терминал и работают,
-пока их не остановить (`Ctrl+C`).
+After this, `localhost:2222` on the `connect` side is forwarded to port
+`22` on the remote machine. Both commands block the terminal and keep
+running until stopped (`Ctrl+C`).
 
 ### Mesh VPN: `join`
 
-Полноценная виртуальная сеть между всеми участниками через настоящий
-TUN-интерфейс и WireGuard — а не проброс одного порта. Требует
-root/`CAP_NET_ADMIN`, потому что создаёт сетевой интерфейс.
+A full virtual network between every participant over a real TUN
+interface and WireGuard — not just a single forwarded port. Requires
+root/`CAP_NET_ADMIN`, since it creates a network interface.
 
-Первый участник создаёт сеть и получает инвайт-токен:
+The first participant creates the network and gets an invite token:
 
 ```sh
 sudo spur join --server SERVER:4443 --stun-server SERVER:4444 \
   --network home
 ```
 
-В выводе будет строка вида `инвайт-токен: ...` — её нужно передать
-остальным участникам (вручную, как и peer-id). Все следующие
-подключаются с этим токеном:
+The output includes a line like `invite-token: ...` — pass it on to the
+rest of the participants (manually, same as the peer-id). Everyone else
+joins with that token:
 
 ```sh
 sudo spur join --server SERVER:4443 --stun-server SERVER:4444 \
-  --network home --invite <токен>
+  --network home --invite <token>
 ```
 
-Повторный `join` уже вошедшим участником токена не требует. Каждому
-участнику назначается адрес из `100.64.0.0/10`; после запуска все
-видят друг друга напрямую по этим адресам, как в обычной VPN, включая
-тех, кто присоединился позже остальных.
+A repeat `join` by an already-joined participant doesn't need the token.
+Every participant is assigned an address from `100.64.0.0/10`; once up,
+everyone can see each other directly at those addresses, like a regular
+VPN — including anyone who joined later than the rest.
 
-Диагностика без поднятия TUN (проверить координацию сети, не трогая
-сеть/root):
+Diagnostics without bringing up a TUN (check network coordination
+without touching the network/root):
 
 ```sh
-spur join-network --server SERVER:4443 --network home --invite <токен>
+spur join-network --server SERVER:4443 --network home --invite <token>
 ```
 
-Выведет CIDR сети и список участников с их mesh-IP.
+Prints the network's CIDR and the list of members with their mesh IPs.
 
-### Передача файлов и директорий: `send` / `receive`
+### Sending files and directories: `send` / `receive`
 
-В отличие от `connect`/`expose`/`join`, это одноразовая операция:
-команда сама завершается, когда передача закончена, держать её
-постоянно открытой не нужно.
+Unlike `connect`/`expose`/`join`, this is a one-shot operation: the
+command exits on its own once the transfer finishes, no need to keep it
+running.
 
-На принимающей стороне (сначала — `receive` должен ждать, когда
-начнётся отправка):
+On the receiving side (start `receive` first — it waits for the transfer
+to begin):
 
 ```sh
 spur receive --server SERVER:4443 --stun-server SERVER:4444 \
-  --to <peer-id отправителя> --out ./полученное
+  --to <sender's peer-id> --out ./received
 ```
 
-На отправляющей стороне — путь может быть как одним файлом, так и
-директорией (отправится рекурсивно, с сохранением относительной
-структуры вложенных папок):
+On the sending side — the path can be either a single file or a
+directory (sent recursively, preserving the relative structure of nested
+folders):
 
 ```sh
 spur send --server SERVER:4443 --stun-server SERVER:4444 \
-  --to <peer-id получателя> ./путь/к/файлу-или-директории
+  --to <recipient's peer-id> ./path/to/file-or-directory
 ```
 
-Обе команды завершаются с кодом `0`, когда всё успешно передано и
-подтверждено принимающей стороной.
+Both commands exit with code `0` once everything has been transferred
+and acknowledged by the receiving side.
 
-## Конфиг-файл
+## Config file
 
-Чтобы не повторять `--server`/`--stun-server`/`--identity` в каждой
-команде, можно один раз задать их в `~/.config/spur/config.json`
-(на macOS/Windows — в соответствующей конфиг-директории пользователя):
+To avoid repeating `--server`/`--stun-server`/`--identity` in every
+command, you can set them once in `~/.config/spur/config.json`
+(on macOS/Windows — in the corresponding per-user config directory):
 
 ```json
 {
@@ -233,61 +236,63 @@ spur send --server SERVER:4443 --stun-server SERVER:4444 \
 }
 ```
 
-Флаги командной строки всегда имеют приоритет над конфиг-файлом; сам файл
-опционален — его отсутствие ничего не меняет в поведении по умолчанию.
+Command-line flags always take priority over the config file; the file
+itself is optional — its absence doesn't change any default behavior.
 
-## Все команды
+## All commands
 
-| Команда | Что делает |
+| Command | What it does |
 |---|---|
-| `spur-server` | Rendezvous-сервер (control-plane + STUN + relay fallback); флаги прямо на корневой команде, не подкоманда |
-| `spur whoami` | Свой peer-id, без обращения к сети |
-| `spur register` | Диагностика: зарегистрироваться на сервере, показать наблюдаемый адрес |
-| `spur connect` | Пробросить локальный порт на сервис пира (`expose`) |
-| `spur expose` | Открыть локальный сервис пиру (`connect`) |
-| `spur join` | Присоединиться к mesh-сети (реальный TUN + WireGuard, нужен root) |
-| `spur join-network` | Диагностика: та же координация сети, без TUN и без root |
-| `spur send` | Отправить файл/директорию пиру, запустившему `spur receive` |
-| `spur receive` | Принять файл/директорию от пира, запустившего `spur send` |
-| `spur version` / `spur-server version` | Версия сборки |
+| `spur-server` | Rendezvous server (control-plane + STUN + relay fallback); flags live directly on the root command, not a subcommand |
+| `spur whoami` | Your own peer-id, no network access |
+| `spur register` | Diagnostic: register with the server, show the observed address |
+| `spur connect` | Forward a local port to a peer's service (`expose`) |
+| `spur expose` | Expose a local service to a peer (`connect`) |
+| `spur join` | Join a mesh network (real TUN + WireGuard, needs root) |
+| `spur join-network` | Diagnostic: the same network coordination, without TUN and without root |
+| `spur send` | Send a file/directory to a peer running `spur receive` |
+| `spur receive` | Receive a file/directory from a peer running `spur send` |
+| `spur version` / `spur-server version` | Build version |
 
-У каждой команды есть `--help` с полным списком флагов.
+Every command has `--help` with the full list of flags.
 
-## Безопасность
+## Security
 
-- **Идентичность** — X25519-keypair, персистентный (`~/.config/spur/identity.key`).
-- **Control-канал** — QUIC/TLS с trust-on-first-use пиннингом сертификата
-  сервера (`~/.config/spur/known_servers.json`): первое подключение
-  к серверу ничем не защищено (как SSH host key), но подмена сервера
-  *после* того, как он уже был доверен, обнаруживается.
-- **Data-plane** — end-to-end шифрование (X25519 ECDH → HKDF → AES-256-GCM)
-  поверх любого транспорта (P2P или relay), независимо от WireGuard,
-  который в mesh-режиме и так шифрует сам.
-- **Mesh-сети** защищены инвайт-токеном: чтобы присоединиться к уже
-  существующей сети, нужно знать токен, который выдаётся при её создании.
+- **Identity** — an X25519 keypair, persistent (`~/.config/spur/identity.key`).
+- **Control channel** — QUIC/TLS with trust-on-first-use pinning of the
+  server's certificate (`~/.config/spur/known_servers.json`): the first
+  connection to a server is unprotected (like an SSH host key), but the
+  server being swapped out *after* it was already trusted is detected.
+- **Data plane** — end-to-end encryption (X25519 ECDH → HKDF →
+  AES-256-GCM) over whatever transport is in use (P2P or relay),
+  independent of WireGuard, which already encrypts on its own in mesh
+  mode.
+- **Mesh networks** are protected by an invite token: joining an
+  already-existing network requires knowing the token issued when it was
+  created.
 
-Подробности архитектуры, известные ограничения и решения по каждой фазе
-разработки — в `CLAUDE.md`.
+Architecture details, known limitations, and the reasoning behind every
+development phase's decisions are in `CLAUDE.md`.
 
-## Разработка
+## Development
 
 ```sh
 make test     # go test ./... -race
 make vet      # go vet + gofmt -l
-make build    # собрать ./bin/spur и ./bin/spur-server под текущую платформу
-make install  # собрать и поставить в PATH (см. install.sh)
+make build    # build ./bin/spur and ./bin/spur-server for the current platform
+make install  # build and install into PATH (see install.sh)
 ```
 
-Изменение control-протокола требует перегенерации protobuf-кода:
+Changing the control protocol requires regenerating the protobuf code:
 
 ```sh
-make proto    # нужны protoc и protoc-gen-go в PATH
+make proto    # needs protoc and protoc-gen-go in PATH
 ```
 
-## Лицензия
+## License
 
-[AGPLv3](LICENSE). В частности: если вы хостите изменённый `spur-server`
-как публичный сервис, вы обязаны предоставить пользователям этого
-сервиса доступ к исходному коду ваших изменений (это то, что AGPL
-добавляет поверх обычного GPL — требование срабатывает от сетевого
-доступа, а не только от распространения бинарника).
+[AGPLv3](LICENSE). In particular: if you host a modified `spur-server`
+as a public service, you're required to provide that service's users
+access to the source code of your modifications (this is what AGPL adds
+on top of plain GPL — the requirement triggers on network access, not
+just on distributing the binary).
