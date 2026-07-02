@@ -24,29 +24,43 @@ control-plane сервера, которыми он никогда не поль
 
 ## Установка
 
-Собрать из исходников (нужен Go 1.24+):
+Самый простой способ (Linux/macOS, не нужен Go) — скачивает готовые
+бинарники под вашу платформу с последнего
+[релиза](https://github.com/fu1se/SPUR/releases) и **автоматически
+добавляет их в `PATH`**: определяет ваш шелл (bash/zsh/fish) и дописывает
+нужную строку в соответствующий rc-файл, если каталога установки там ещё
+нет.
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/fu1se/SPUR/master/install.sh | sh
+```
+
+По умолчанию ставит в `~/.local/bin`; другой каталог — через
+`SPUR_INSTALL_DIR=/куда/нужно sh install.sh`. Скрипт идемпотентен — можно
+гонять повторно, дублей в rc-файл не добавит. Если каталог только что
+добавлен в `PATH`, эффект будет виден после перезапуска шелла (или
+`source ~/.bashrc`/`~/.zshrc`/`~/.config/fish/config.fish` — какой
+именно, скрипт скажет сам) — запущенный скрипт физически не может
+поменять `PATH` уже открытого родительского шелла, это ограничение самих
+шеллов, не что-то, что можно обойти.
+
+На Windows автоматики нет — скачайте `spur-windows-amd64.exe`/
+`spur-server-windows-amd64.exe` с той же страницы релизов и добавьте их
+папку в `PATH` через «Переменные среды» вручную.
+
+Собрать и поставить из исходников (нужен Go 1.24+) — тот же install.sh
+под капотом, поэтому PATH настраивается точно так же автоматически:
 
 ```sh
 git clone https://github.com/fu1se/SPUR.git
 cd SPUR
-make build          # соберёт ./bin/spur (клиент) и ./bin/spur-server (сервер)
+make install        # соберёт и поставит + настроит PATH
 ```
 
-Чтобы `spur`/`spur-server` работали как обычные команды (без `./bin/`
-и без ручного копирования в `/usr/local/bin`):
-
-```sh
-make install        # go install в $(go env GOPATH)/bin
-```
-
-Убедитесь, что `$(go env GOPATH)/bin` есть в `PATH` (для fish:
-`fish_add_path (go env GOPATH)/bin`, для bash/zsh — добавить `export
-PATH="$PATH:$(go env GOPATH)/bin"` в `~/.bashrc`/`~/.zshrc`).
-
-Готовые бинарники (без сборки из исходников) — на странице
-[Releases](https://github.com/fu1se/SPUR/releases). Кросс-компиляция
-под все платформы (Linux/macOS/Windows, amd64/arm64) из исходников:
-`make release` (см. `make help`).
+`make build` (без `install`) просто собирает `./bin/spur` и
+`./bin/spur-server`, ничего никуда не копируя — если нужен именно этот
+вариант. Кросс-компиляция под все платформы: `make release` (см. `make
+help`).
 
 `spur` устанавливается на каждую машину, которая будет подключаться к
 другим. `spur-server` — только на одну машину с публичным IP
@@ -261,7 +275,7 @@ spur send --server SERVER:4443 --stun-server SERVER:4444 \
 make test     # go test ./... -race
 make vet      # go vet + gofmt -l
 make build    # собрать ./bin/spur и ./bin/spur-server под текущую платформу
-make install  # go install в $(go env GOPATH)/bin
+make install  # собрать и поставить в PATH (см. install.sh)
 ```
 
 Изменение control-протокола требует перегенерации protobuf-кода:

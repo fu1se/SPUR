@@ -9,7 +9,7 @@ RELEASE_PLATFORMS := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/a
 help:
 	@echo "targets:"
 	@echo "  build    - build ./$(BIN_DIR)/spur (client) and ./$(BIN_DIR)/spur-server for the current platform"
-	@echo "  install  - go install spur and spur-server into \$$(go env GOPATH)/bin, so 'spur' works as a plain command"
+	@echo "  install  - build and install spur/spur-server, adding them to PATH automatically (see install.sh)"
 	@echo "  test     - go test ./... -race"
 	@echo "  vet      - go vet + gofmt -l (fails if any file is unformatted)"
 	@echo "  fmt      - gofmt -w every .go file"
@@ -24,10 +24,8 @@ build:
 	go build -trimpath -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/spur-server ./cmd/spur-server
 
 .PHONY: install
-install:
-	go install -trimpath -ldflags "$(LDFLAGS)" ./cmd/spur
-	go install -trimpath -ldflags "$(LDFLAGS)" ./cmd/spur-server
-	@echo "installed to $$(go env GOPATH)/bin — make sure that directory is in your PATH"
+install: build
+	SPUR_LOCAL_BUILD_DIR=$(BIN_DIR) ./install.sh
 
 .PHONY: test
 test:
