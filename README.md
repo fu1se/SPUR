@@ -27,8 +27,8 @@ control-plane сервера, которыми он никогда не поль
 Собрать из исходников (нужен Go 1.24+):
 
 ```sh
-git clone <адрес репозитория>
-cd spur
+git clone https://github.com/fu1se/SPUR.git
+cd SPUR
 make build          # соберёт ./bin/spur (клиент) и ./bin/spur-server (сервер)
 ```
 
