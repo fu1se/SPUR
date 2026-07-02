@@ -8,6 +8,7 @@ import (
 
 	"github.com/fu1se/localizator/internal/adapter/controlclient"
 	"github.com/fu1se/localizator/internal/adapter/controlproto"
+	"github.com/fu1se/localizator/internal/adapter/e2e"
 	"github.com/fu1se/localizator/internal/adapter/localnet"
 	"github.com/fu1se/localizator/internal/adapter/nat"
 	"github.com/fu1se/localizator/internal/adapter/tunnel"
@@ -61,11 +62,11 @@ func rendezvous(ctx context.Context, serverAddr, stunAddr, identityPath string, 
 	if err != nil {
 		return nil, "", err
 	}
-	pub, err := infra.LoadOrCreateIdentity(resolvedIdentityPath)
+	id, err := infra.LoadOrCreateIdentity(resolvedIdentityPath)
 	if err != nil {
 		return nil, "", fmt.Errorf("app: load identity: %w", err)
 	}
-	self = domain.DerivePeerID(pub)
+	self = domain.DerivePeerID(id.PublicKey)
 
 	client, err := controlclient.Dial(ctx, serverAddr, infra.InsecureClientTLSConfig(controlproto.ALPN), infra.DefaultQUICConfig())
 	if err != nil {
@@ -77,7 +78,7 @@ func rendezvous(ctx context.Context, serverAddr, stunAddr, identityPath string, 
 		}
 	}()
 
-	if _, err = client.Register(ctx, pub); err != nil {
+	if _, err = client.Register(ctx, id.PublicKey); err != nil {
 		return nil, "", fmt.Errorf("app: register: %w", err)
 	}
 	onSelfID(string(self))
@@ -110,7 +111,10 @@ func rendezvous(ctx context.Context, serverAddr, stunAddr, identityPath string, 
 	sessionID := domain.SessionIDFor(self, counterpart)
 
 	exchange := usecase.ExchangeCandidates{Signaler: client}
-	peerCandidates, err := exchange.Execute(ctx, sessionID, self, counterpart, ownCandidates)
+	peerSet, err := exchange.Execute(ctx, sessionID, self, counterpart, domain.CandidateSet{
+		Candidates: ownCandidates,
+		PublicKey:  id.PublicKey,
+	})
 	if err != nil {
 		return nil, "", fmt.Errorf("app: exchange candidates: %w", err)
 	}
@@ -119,7 +123,7 @@ func rendezvous(ctx context.Context, serverAddr, stunAddr, identityPath string, 
 		Puncher: &nat.UDPPuncher{Conn: udpConn, SessionID: sessionID},
 		Relay:   client,
 	}
-	session, relayStream, err := establish.Execute(ctx, sessionID, peerCandidates)
+	session, relayStream, err := establish.Execute(ctx, sessionID, peerSet.Candidates)
 	if err != nil {
 		return nil, "", fmt.Errorf("app: establish session: %w", err)
 	}
@@ -140,7 +144,17 @@ func rendezvous(ctx context.Context, serverAddr, stunAddr, identityPath string, 
 		return nil, "", fmt.Errorf("app: establish data-plane transport: %w", err)
 	}
 
-	return &establishedTunnel{conn: tunnelConn, controlClient: client, udpConn: udpConn}, self, nil
+	// Wrap regardless of which path (P2P or relay) was used — see
+	// adapter/e2e's package doc for why both need it: relay because the
+	// server sees plaintext otherwise, P2P because the QUIC connection
+	// isn't authenticated against the peer's real identity yet
+	// (InsecureSkipVerify, Phase 7 follow-up).
+	encryptedConn, err := e2e.WrapConn(tunnelConn, id.PrivateKey, peerSet.PublicKey, isDialer)
+	if err != nil {
+		return nil, "", fmt.Errorf("app: wrap end-to-end encryption: %w", err)
+	}
+
+	return &establishedTunnel{conn: encryptedConn, controlClient: client, udpConn: udpConn}, self, nil
 }
 
 // connect is "app connect": forward every local connection on localPort

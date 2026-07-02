@@ -17,3 +17,13 @@ type Candidate struct {
 	Kind CandidateKind
 	Addr netip.AddrPort
 }
+
+// CandidateSet bundles one peer's candidates with its identity key —
+// published together during candidate exchange so that, by the time a
+// session is established, both sides already have what they need to
+// derive an end-to-end shared secret (Phase 7), independent of whether
+// the transport that ends up carrying data is P2P or relay.
+type CandidateSet struct {
+	Candidates []Candidate
+	PublicKey  PublicKey
+}

@@ -71,10 +71,16 @@ type Dependencies struct {
 	Whoami func(identityPath string) (string, error)
 
 	// JoinNetwork registers with a mesh network on the server and returns
-	// its current membership. Data-plane (TUN/wireguard-go) is not wired
-	// up yet — see CLAUDE.md's Phase 6 note — so this only exercises the
-	// control-plane coordination, the same way Register does for Phase 2.
+	// its current membership. Control-plane only, no TUN — same
+	// "validate the control-plane piece in isolation" pattern as Register
+	// did for Phase 2.
 	JoinNetwork func(ctx context.Context, serverAddr, networkName, identityPath string) (JoinNetworkResult, error)
+
+	// Join is "app join": full mesh VPN mode — join the network, tunnel
+	// to every other member, and route traffic through a real TUN
+	// interface. Requires elevated privileges (root/CAP_NET_ADMIN on
+	// Linux). onSelfID: see Connect. Blocks until ctx is cancelled.
+	Join func(ctx context.Context, serverAddr, stunAddr, networkName, identityPath string, onSelfID func(selfID string)) error
 }
 
 // NewRootCommand builds the root cobra command with all subcommands wired
@@ -94,7 +100,7 @@ func NewRootCommand(deps Dependencies) *cobra.Command {
 		newWhoamiCommand(deps),
 		newConnectCommand(deps),
 		newExposeCommand(deps),
-		newJoinCommand(),
+		newJoinCommand(deps),
 		newJoinNetworkCommand(deps),
 	)
 

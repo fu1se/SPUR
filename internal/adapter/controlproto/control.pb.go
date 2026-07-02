@@ -182,6 +182,7 @@ type PublishCandidatesRequest struct {
 	SessionId     string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
 	PeerId        string                 `protobuf:"bytes,2,opt,name=peer_id,json=peerId,proto3" json:"peer_id,omitempty"` // the publisher's own ID
 	Candidates    []*Candidate           `protobuf:"bytes,3,rep,name=candidates,proto3" json:"candidates,omitempty"`
+	PublicKey     []byte                 `protobuf:"bytes,4,opt,name=public_key,json=publicKey,proto3" json:"public_key,omitempty"` // publisher's identity key — lets the counterpart
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -233,6 +234,13 @@ func (x *PublishCandidatesRequest) GetPeerId() string {
 func (x *PublishCandidatesRequest) GetCandidates() []*Candidate {
 	if x != nil {
 		return x.Candidates
+	}
+	return nil
+}
+
+func (x *PublishCandidatesRequest) GetPublicKey() []byte {
+	if x != nil {
+		return x.PublicKey
 	}
 	return nil
 }
@@ -330,6 +338,7 @@ func (x *AwaitCandidatesRequest) GetPeerId() string {
 type AwaitCandidatesResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Candidates    []*Candidate           `protobuf:"bytes,1,rep,name=candidates,proto3" json:"candidates,omitempty"`
+	PublicKey     []byte                 `protobuf:"bytes,2,opt,name=public_key,json=publicKey,proto3" json:"public_key,omitempty"` // the awaited peer's identity key, see
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -367,6 +376,13 @@ func (*AwaitCandidatesResponse) Descriptor() ([]byte, []int) {
 func (x *AwaitCandidatesResponse) GetCandidates() []*Candidate {
 	if x != nil {
 		return x.Candidates
+	}
+	return nil
+}
+
+func (x *AwaitCandidatesResponse) GetPublicKey() []byte {
+	if x != nil {
+		return x.PublicKey
 	}
 	return nil
 }
@@ -602,23 +618,27 @@ const file_control_proto_rawDesc = "" +
 	"\x10observed_address\x18\x02 \x01(\tR\x0fobservedAddress\"9\n" +
 	"\tCandidate\x12\x12\n" +
 	"\x04kind\x18\x01 \x01(\tR\x04kind\x12\x18\n" +
-	"\aaddress\x18\x02 \x01(\tR\aaddress\"\x89\x01\n" +
+	"\aaddress\x18\x02 \x01(\tR\aaddress\"\xa8\x01\n" +
 	"\x18PublishCandidatesRequest\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\x12\x17\n" +
 	"\apeer_id\x18\x02 \x01(\tR\x06peerId\x125\n" +
 	"\n" +
 	"candidates\x18\x03 \x03(\v2\x15.control.v1.CandidateR\n" +
-	"candidates\"\x1b\n" +
+	"candidates\x12\x1d\n" +
+	"\n" +
+	"public_key\x18\x04 \x01(\fR\tpublicKey\"\x1b\n" +
 	"\x19PublishCandidatesResponse\"P\n" +
 	"\x16AwaitCandidatesRequest\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\x12\x17\n" +
-	"\apeer_id\x18\x02 \x01(\tR\x06peerId\"P\n" +
+	"\apeer_id\x18\x02 \x01(\tR\x06peerId\"o\n" +
 	"\x17AwaitCandidatesResponse\x125\n" +
 	"\n" +
 	"candidates\x18\x01 \x03(\v2\x15.control.v1.CandidateR\n" +
-	"candidates\"1\n" +
+	"candidates\x12\x1d\n" +
+	"\n" +
+	"public_key\x18\x02 \x01(\fR\tpublicKey\"1\n" +
 	"\x10RelayOpenRequest\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\"]\n" +

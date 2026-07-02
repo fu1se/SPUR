@@ -110,13 +110,16 @@ func runPeer(
 	ownCandidates := append(hostCandidates, reflexive)
 
 	exchange := usecase.ExchangeCandidates{Signaler: client}
-	peerCandidates, err := exchange.Execute(ctx, sessionID, domain.DerivePeerID(self), counterpart, ownCandidates)
+	peerSet, err := exchange.Execute(ctx, sessionID, domain.DerivePeerID(self), counterpart, domain.CandidateSet{
+		Candidates: ownCandidates,
+		PublicKey:  self,
+	})
 	if err != nil {
 		return netip.AddrPort{}, err
 	}
 
 	puncher := &nat.UDPPuncher{Conn: conn, SessionID: sessionID}
-	return puncher.Punch(ctx, peerCandidates)
+	return puncher.Punch(ctx, peerSet.Candidates)
 }
 
 // startControlServer binds an ephemeral UDP port synchronously (so the

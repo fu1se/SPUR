@@ -36,6 +36,7 @@ func main() {
 		Expose:      expose,
 		Whoami:      whoami,
 		JoinNetwork: joinNetwork,
+		Join:        join,
 	})
 
 	if err := root.ExecuteContext(ctx); err != nil {
@@ -125,11 +126,11 @@ func whoami(identityPath string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	pub, err := infra.LoadOrCreateIdentity(resolvedIdentityPath)
+	id, err := infra.LoadOrCreateIdentity(resolvedIdentityPath)
 	if err != nil {
 		return "", fmt.Errorf("app: load identity: %w", err)
 	}
-	return string(domain.DerivePeerID(pub)), nil
+	return string(domain.DerivePeerID(id.PublicKey)), nil
 }
 
 // joinNetwork loads (or creates) the local identity and joins a mesh
@@ -140,7 +141,7 @@ func joinNetwork(ctx context.Context, serverAddr, networkName, identityPath stri
 	if err != nil {
 		return cli.JoinNetworkResult{}, err
 	}
-	pub, err := infra.LoadOrCreateIdentity(resolvedIdentityPath)
+	id, err := infra.LoadOrCreateIdentity(resolvedIdentityPath)
 	if err != nil {
 		return cli.JoinNetworkResult{}, fmt.Errorf("app: load identity: %w", err)
 	}
@@ -151,7 +152,7 @@ func joinNetwork(ctx context.Context, serverAddr, networkName, identityPath stri
 	}
 	defer client.Close()
 
-	network, err := client.JoinNetwork(ctx, networkName, pub)
+	network, err := client.JoinNetwork(ctx, networkName, id.PublicKey)
 	if err != nil {
 		return cli.JoinNetworkResult{}, err
 	}

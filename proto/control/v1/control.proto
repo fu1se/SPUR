@@ -30,6 +30,10 @@ message PublishCandidatesRequest {
   string session_id = 1;
   string peer_id = 2; // the publisher's own ID
   repeated Candidate candidates = 3;
+  bytes public_key = 4; // publisher's identity key — lets the counterpart
+                         // derive an end-to-end shared secret (Phase 7),
+                         // independent of whatever transport (P2P or relay)
+                         // ends up carrying the data
 }
 
 message PublishCandidatesResponse {}
@@ -43,6 +47,8 @@ message AwaitCandidatesRequest {
 
 message AwaitCandidatesResponse {
   repeated Candidate candidates = 1;
+  bytes public_key = 2; // the awaited peer's identity key, see
+                         // PublishCandidatesRequest.public_key
 }
 
 // RelayOpenRequest is the only framed message on a relay stream: after the

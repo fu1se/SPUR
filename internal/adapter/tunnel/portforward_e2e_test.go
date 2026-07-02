@@ -144,7 +144,10 @@ func doRendezvous(ctx context.Context, controlAddr string, stunAddr netip.AddrPo
 	sessionID := domain.SessionIDFor(selfID, counterpart)
 
 	exchange := usecase.ExchangeCandidates{Signaler: client}
-	peerCandidates, err := exchange.Execute(ctx, sessionID, selfID, counterpart, ownCandidates)
+	peerSet, err := exchange.Execute(ctx, sessionID, selfID, counterpart, domain.CandidateSet{
+		Candidates: ownCandidates,
+		PublicKey:  self,
+	})
 	if err != nil {
 		client.Close()
 		udpConn.Close()
@@ -155,7 +158,7 @@ func doRendezvous(ctx context.Context, controlAddr string, stunAddr netip.AddrPo
 		Puncher: &nat.UDPPuncher{Conn: udpConn, SessionID: sessionID},
 		Relay:   client,
 	}
-	session, relayStream, err := establish.Execute(ctx, sessionID, peerCandidates)
+	session, relayStream, err := establish.Execute(ctx, sessionID, peerSet.Candidates)
 	if err != nil {
 		client.Close()
 		udpConn.Close()
