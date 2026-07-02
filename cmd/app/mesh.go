@@ -10,7 +10,6 @@ import (
 	"golang.zx2c4.com/wireguard/device"
 
 	"github.com/fu1se/localizator/internal/adapter/controlclient"
-	"github.com/fu1se/localizator/internal/adapter/controlproto"
 	"github.com/fu1se/localizator/internal/adapter/wgmesh"
 	"github.com/fu1se/localizator/internal/domain"
 	"github.com/fu1se/localizator/internal/infra"
@@ -56,7 +55,11 @@ func join(ctx context.Context, serverAddr, stunAddr, networkName, identityPath s
 	self := domain.DerivePeerID(id.PublicKey)
 	onSelfID(string(self))
 
-	joinClient, err := controlclient.Dial(ctx, serverAddr, infra.InsecureClientTLSConfig(controlproto.ALPN), infra.DefaultQUICConfig())
+	controlTLSConf, err := controlClientTLS(serverAddr)
+	if err != nil {
+		return err
+	}
+	joinClient, err := controlclient.Dial(ctx, serverAddr, controlTLSConf, infra.DefaultQUICConfig())
 	if err != nil {
 		return fmt.Errorf("app: dial control-plane: %w", err)
 	}

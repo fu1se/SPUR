@@ -43,6 +43,19 @@ func resolveIdentityPath(identityPath string) (string, error) {
 	return infra.DefaultIdentityPath()
 }
 
+// controlClientTLS builds the TLS config for dialing a control-plane
+// server at serverAddr: trust-on-first-use pinning (infra.TOFUClientTLSConfig)
+// against the default trust store, replacing blind InsecureSkipVerify
+// trust. See infra/tofu.go's doc comment for what this does and doesn't
+// protect against.
+func controlClientTLS(serverAddr string) (*tls.Config, error) {
+	trustStorePath, err := infra.DefaultTrustStorePath()
+	if err != nil {
+		return nil, err
+	}
+	return infra.TOFUClientTLSConfig(trustStorePath, serverAddr, controlproto.ALPN), nil
+}
+
 // rendezvous runs the full client-side flow shared by "app connect" and
 // "app expose": load (or create) a persisted identity, register, gather
 // and exchange NAT candidates, establish a session (punch or relay
@@ -68,7 +81,11 @@ func rendezvous(ctx context.Context, serverAddr, stunAddr, identityPath string, 
 	}
 	self = domain.DerivePeerID(id.PublicKey)
 
-	client, err := controlclient.Dial(ctx, serverAddr, infra.InsecureClientTLSConfig(controlproto.ALPN), infra.DefaultQUICConfig())
+	controlTLSConf, err := controlClientTLS(serverAddr)
+	if err != nil {
+		return nil, "", err
+	}
+	client, err := controlclient.Dial(ctx, serverAddr, controlTLSConf, infra.DefaultQUICConfig())
 	if err != nil {
 		return nil, "", fmt.Errorf("app: dial control-plane: %w", err)
 	}

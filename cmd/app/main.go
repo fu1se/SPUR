@@ -52,7 +52,11 @@ func main() {
 // why); both are bound up front so a failure to bind either port surfaces
 // immediately instead of racing the accept loop.
 func runServer(ctx context.Context, controlAddr, stunAddr string) error {
-	tlsConf, err := infra.SelfSignedServerTLSConfig(controlproto.ALPN)
+	certPath, err := infra.DefaultServerCertPath()
+	if err != nil {
+		return err
+	}
+	tlsConf, err := infra.LoadOrCreateServerTLSConfig(certPath, controlproto.ALPN)
 	if err != nil {
 		return fmt.Errorf("app: tls config: %w", err)
 	}
@@ -99,7 +103,10 @@ func register(ctx context.Context, serverAddr string) (cli.RegisterResult, error
 		return cli.RegisterResult{}, fmt.Errorf("app: generate ephemeral key: %w", err)
 	}
 
-	tlsConf := infra.InsecureClientTLSConfig(controlproto.ALPN)
+	tlsConf, err := controlClientTLS(serverAddr)
+	if err != nil {
+		return cli.RegisterResult{}, err
+	}
 
 	client, err := controlclient.Dial(ctx, serverAddr, tlsConf, infra.DefaultQUICConfig())
 	if err != nil {
@@ -146,7 +153,12 @@ func joinNetwork(ctx context.Context, serverAddr, networkName, identityPath stri
 		return cli.JoinNetworkResult{}, fmt.Errorf("app: load identity: %w", err)
 	}
 
-	client, err := controlclient.Dial(ctx, serverAddr, infra.InsecureClientTLSConfig(controlproto.ALPN), infra.DefaultQUICConfig())
+	tlsConf, err := controlClientTLS(serverAddr)
+	if err != nil {
+		return cli.JoinNetworkResult{}, err
+	}
+
+	client, err := controlclient.Dial(ctx, serverAddr, tlsConf, infra.DefaultQUICConfig())
 	if err != nil {
 		return cli.JoinNetworkResult{}, err
 	}
