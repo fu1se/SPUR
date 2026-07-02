@@ -120,7 +120,7 @@ UDP WireGuard-пакетов, endpoint динамически обновляет
 | Компонент | Библиотека |
 |---|---|
 | CLI | `spf13/cobra` + `spf13/viper` |
-| Control-протокол клиент↔сервер | `protobuf` + `grpc` поверх QUIC (`quic-go`) |
+| Control-протокол клиент↔сервер | `protobuf`-сообщения в length-prefixed фреймах поверх QUIC-стримов (`quic-go`). Полноценный `grpc` не используется: его транспорт завязан на HTTP/2-фрейминг, который не работает поверх сырого QUIC без HTTP/3-прослойки — вместо этого свой минимальный RPC поверх `quic-go` стримов, кодогенерация сообщений через `protoc` + `protoc-gen-go` |
 | STUN | `pion/stun` |
 | Мультиплексирование (port-forward) | нативные QUIC-стримы |
 | Mesh-туннель | `wireguard-go` (`golang.zx2c4.com/wireguard`) |
@@ -128,6 +128,21 @@ UDP WireGuard-пакетов, endpoint динамически обновляет
 | Хранение состояния сервера | SQLite (`modernc.org/sqlite`, без cgo) |
 | Логи | `rs/zerolog` |
 | Тесты | стандартный `testing` + `testify/require` для ассертов |
+
+### Требования окружения для сборки
+
+- Go (проверено на 1.26.4) должен быть в `PATH`.
+- Для регенерации `*.pb.go` из `.proto` нужны в `PATH`: `protoc` (системный
+  пакет) и `protoc-gen-go` (`go install
+  google.golang.org/protobuf/cmd/protoc-gen-go@latest`, ставится в
+  `$(go env GOPATH)/bin`). Сгенерированные `.pb.go` коммитятся в репозиторий,
+  чтобы обычная сборка (`go build`) не требовала `protoc` — он нужен только
+  при изменении `.proto`-файлов.
+- TLS сервера в Фазе 2 — самоподписанный сертификат, генерируется на лету,
+  клиент временно отключает проверку цепочки (`InsecureSkipVerify`). Это
+  осознанное временное упрощение — верификация (pinning по публичному ключу
+  сервера) закрывается в Фазе 7, не раньше. Не забыть об этом при доведении
+  проекта до чего-то, что можно выставлять наружу.
 
 ### Безопасность
 
@@ -163,8 +178,10 @@ UDP WireGuard-пакетов, endpoint динамически обновляет
 
 /internal/adapter                — Interface Adapters. Реализуют порты из usecase,
                                    переводят данные между внешним миром и domain-моделями.
-    /adapter/grpcserver           — control-plane обработчики на сервере
-    /adapter/grpcclient           — control-plane клиент
+    /adapter/controlserver         — control-plane обработчики на сервере (QUIC)
+    /adapter/controlclient         — control-plane клиент (QUIC)
+    /adapter/controlproto          — protobuf-сообщения и фрейминг control-протокола
+    /adapter/repository/memory    — in-memory реализация port.PeerRepository (до SQLite)
     /adapter/cli                  — cobra-команды, транслируют CLI-флаги в вызовы usecase
     /adapter/repository/sqlite    — implements usecase/port.Repository
     /adapter/nat                  — STUN/punching, implements usecase/port.Puncher
@@ -194,7 +211,7 @@ UDP WireGuard-пакетов, endpoint динамически обновляет
       Architecture выше, пустой `cmd/app` с cobra-скелетом.
 - [x] Фаза 1: domain-слой (Peer, Network, Candidate, Session, Tunnel) + порты
       в `usecase/port` (без реализаций).
-- [ ] Фаза 2: control-plane — сервер регистрации пиров + STUN-эндпоинт,
+- [x] Фаза 2: control-plane — сервер регистрации пиров + STUN-эндпоинт,
       клиент регистрируется и получает свой public ip:port.
 - [ ] Фаза 3: обмен кандидатами через сервер (signaling) + UDP hole punching
       между двумя клиентами, с тестом на loopback/двух локальных процессах.

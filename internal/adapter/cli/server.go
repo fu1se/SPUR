@@ -1,20 +1,18 @@
 package cli
 
 import (
-	"errors"
-
 	"github.com/spf13/cobra"
 )
 
-func newServerCommand() *cobra.Command {
+func newServerCommand(deps Dependencies) *cobra.Command {
 	var listenAddr string
 
 	cmd := &cobra.Command{
 		Use:   "server",
 		Short: "Запустить rendezvous/signaling-сервер (control plane + relay fallback)",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			_ = listenAddr
-			return errors.New("server: не реализовано (Фаза 2)")
+			cmd.Printf("control-plane слушает на %s\n", listenAddr)
+			return deps.RunServer(cmd.Context(), listenAddr)
 		},
 	}
 

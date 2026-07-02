@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package control.v1;
+
+option go_package = "github.com/fu1se/localizator/internal/adapter/controlproto";
+
+// RegisterRequest is sent by a client right after the control-channel QUIC
+// handshake completes, to announce its identity to the rendezvous server.
+message RegisterRequest {
+  bytes public_key = 1; // 32 bytes, Curve25519/WireGuard-compatible
+}
+
+// RegisterResponse tells the client how the server sees it, i.e. its
+// server-reflexive candidate — the STUN-equivalent part of registration.
+message RegisterResponse {
+  string peer_id = 1;
+  string observed_address = 2; // host:port as seen by the server
+}
