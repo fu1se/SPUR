@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/hex"
 	"fmt"
 	"net/netip"
@@ -38,7 +39,12 @@ func (uc JoinNetwork) Execute(ctx context.Context, networkName string, peer doma
 			}
 			network = domain.Network{Name: networkName, CIDR: netip.MustParsePrefix(defaultMeshCIDR), InviteToken: token}
 		case !network.HasMember(peer):
-			if inviteToken == "" || inviteToken != network.InviteToken {
+			// Constant-time comparison: the invite token is a bearer
+			// credential gating entry into a private network, so a
+			// length/early-exit-dependent comparison would leak a timing
+			// side channel an attacker could use to recover it faster
+			// than brute force.
+			if inviteToken == "" || subtle.ConstantTimeCompare([]byte(inviteToken), []byte(network.InviteToken)) != 1 {
 				return domain.Network{}, domain.ErrInvalidInviteToken
 			}
 		}

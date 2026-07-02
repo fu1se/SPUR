@@ -19,6 +19,15 @@ func WriteFrame(w io.Writer, msg proto.Message) error {
 	if err != nil {
 		return fmt.Errorf("controlproto: marshal: %w", err)
 	}
+	if len(body) > maxFrameSize {
+		// Without this, a message that grows past maxFrameSize (e.g. a
+		// JoinNetworkResponse listing enough mesh members) would be
+		// written successfully here but then unconditionally rejected by
+		// the reading side's ReadFrame -- a confusing "frame too large"
+		// error on the wrong end, with no indication at the writer that
+		// it was the one that produced an oversized message.
+		return fmt.Errorf("controlproto: message too large to write: %d bytes", len(body))
+	}
 
 	var header [4]byte
 	binary.BigEndian.PutUint32(header[:], uint32(len(body)))
