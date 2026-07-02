@@ -6,13 +6,13 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func newJoinCommand(deps Dependencies) *cobra.Command {
+func newJoinCommand(deps Dependencies, defaults Defaults) *cobra.Command {
 	var (
-		serverAddr   string
-		stunAddr     string
+		serverAddr   = defaults.Server
+		stunAddr     = defaults.StunServer
 		network      string
 		inviteToken  string
-		identityPath string
+		identityPath = defaults.Identity
 	)
 
 	cmd := &cobra.Command{
@@ -28,11 +28,11 @@ func newJoinCommand(deps Dependencies) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&serverAddr, "server", "", "адрес rendezvous/coordination-сервера")
-	cmd.Flags().StringVar(&stunAddr, "stun-server", "", "адрес STUN-эндпоинта сервера")
+	cmd.Flags().StringVar(&serverAddr, "server", serverAddr, "адрес rendezvous/coordination-сервера")
+	cmd.Flags().StringVar(&stunAddr, "stun-server", stunAddr, "адрес STUN-эндпоинта сервера")
 	cmd.Flags().StringVar(&network, "network", "", "имя mesh-сети")
 	cmd.Flags().StringVar(&inviteToken, "invite", "", "инвайт-токен сети (не нужен при создании новой сети или повторном join)")
-	cmd.Flags().StringVar(&identityPath, "identity", "", "путь к файлу идентичности (по умолчанию — в конфиг-директории пользователя)")
+	cmd.Flags().StringVar(&identityPath, "identity", identityPath, "путь к файлу идентичности (по умолчанию — в конфиг-директории пользователя)")
 
 	return cmd
 }

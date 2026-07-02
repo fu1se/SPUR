@@ -29,6 +29,12 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	defaults, err := loadDefaults()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+
 	root := cli.NewRootCommand(cli.Dependencies{
 		RunServer:   runServer,
 		Register:    register,
@@ -37,11 +43,26 @@ func main() {
 		Whoami:      whoami,
 		JoinNetwork: joinNetwork,
 		Join:        join,
-	})
+	}, defaults)
 
 	if err := root.ExecuteContext(ctx); err != nil {
 		os.Exit(1)
 	}
+}
+
+// loadDefaults reads the optional config file (see infra.Config's doc
+// comment) into cli.Defaults. A missing file just means every flag keeps
+// its original empty default — the config file is purely additive.
+func loadDefaults() (cli.Defaults, error) {
+	path, err := infra.DefaultConfigPath()
+	if err != nil {
+		return cli.Defaults{}, err
+	}
+	cfg, err := infra.LoadConfig(path)
+	if err != nil {
+		return cli.Defaults{}, err
+	}
+	return cli.Defaults{Server: cfg.Server, StunServer: cfg.StunServer, Identity: cfg.Identity}, nil
 }
 
 // runServer wires the in-memory peer repository, candidate broker and their

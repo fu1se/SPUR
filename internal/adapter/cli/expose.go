@@ -6,12 +6,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func newExposeCommand(deps Dependencies) *cobra.Command {
+func newExposeCommand(deps Dependencies, defaults Defaults) *cobra.Command {
 	var (
-		serverAddr   string
-		stunAddr     string
+		serverAddr   = defaults.Server
+		stunAddr     = defaults.StunServer
 		peerID       string
-		identityPath string
+		identityPath = defaults.Identity
 		targetPort   int
 	)
 
@@ -28,10 +28,10 @@ func newExposeCommand(deps Dependencies) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&serverAddr, "server", "", "адрес rendezvous-сервера (control-канал)")
-	cmd.Flags().StringVar(&stunAddr, "stun-server", "", "адрес STUN-эндпоинта сервера")
+	cmd.Flags().StringVar(&serverAddr, "server", serverAddr, "адрес rendezvous-сервера (control-канал)")
+	cmd.Flags().StringVar(&stunAddr, "stun-server", stunAddr, "адрес STUN-эндпоинта сервера")
 	cmd.Flags().StringVar(&peerID, "to", "", "идентификатор пира, которому разрешено подключаться")
-	cmd.Flags().StringVar(&identityPath, "identity", "", "путь к файлу идентичности (по умолчанию — в конфиг-директории пользователя)")
+	cmd.Flags().StringVar(&identityPath, "identity", identityPath, "путь к файлу идентичности (по умолчанию — в конфиг-директории пользователя)")
 	cmd.Flags().IntVar(&targetPort, "port", 0, "локальный порт сервиса, который открываем")
 
 	return cmd

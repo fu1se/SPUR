@@ -6,8 +6,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func newWhoamiCommand(deps Dependencies) *cobra.Command {
-	var identityPath string
+func newWhoamiCommand(deps Dependencies, defaults Defaults) *cobra.Command {
+	var identityPath = defaults.Identity
 
 	cmd := &cobra.Command{
 		Use:   "whoami",
@@ -26,7 +26,7 @@ func newWhoamiCommand(deps Dependencies) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&identityPath, "identity", "", "путь к файлу идентичности (по умолчанию — в конфиг-директории пользователя)")
+	cmd.Flags().StringVar(&identityPath, "identity", identityPath, "путь к файлу идентичности (по умолчанию — в конфиг-директории пользователя)")
 
 	return cmd
 }

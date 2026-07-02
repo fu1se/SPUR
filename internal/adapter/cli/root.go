@@ -16,6 +16,17 @@ import (
 // version is set at build time via -ldflags "-X ... version=...".
 var version = "dev"
 
+// Defaults holds fallback values for flags a user would otherwise have to
+// retype on every invocation (--server, --stun-server, --identity). Loaded
+// from a config file in cmd/app (an infra concern — this package must not
+// touch disk itself); zero values here just mean the flag keeps its
+// original empty default, so an absent config file changes nothing.
+type Defaults struct {
+	Server     string
+	StunServer string
+	Identity   string
+}
+
 // RegisterResult is what a successful control-plane registration reports
 // back to the CLI layer.
 type RegisterResult struct {
@@ -88,8 +99,9 @@ type Dependencies struct {
 }
 
 // NewRootCommand builds the root cobra command with all subcommands wired
-// against deps.
-func NewRootCommand(deps Dependencies) *cobra.Command {
+// against deps. defaults pre-fills flags from a config file; every field
+// can still be overridden per-invocation by passing the flag explicitly.
+func NewRootCommand(deps Dependencies, defaults Defaults) *cobra.Command {
 	root := &cobra.Command{
 		Use:           "app",
 		Short:         "localizator — прямое подключение в локальную сеть в обход NAT",
@@ -100,12 +112,12 @@ func NewRootCommand(deps Dependencies) *cobra.Command {
 	root.AddCommand(
 		newVersionCommand(),
 		newServerCommand(deps),
-		newRegisterCommand(deps),
-		newWhoamiCommand(deps),
-		newConnectCommand(deps),
-		newExposeCommand(deps),
-		newJoinCommand(deps),
-		newJoinNetworkCommand(deps),
+		newRegisterCommand(deps, defaults),
+		newWhoamiCommand(deps, defaults),
+		newConnectCommand(deps, defaults),
+		newExposeCommand(deps, defaults),
+		newJoinCommand(deps, defaults),
+		newJoinNetworkCommand(deps, defaults),
 	)
 
 	return root

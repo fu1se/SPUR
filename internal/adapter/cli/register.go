@@ -10,8 +10,8 @@ import (
 // end to end: dial the server, register, print back what the server saw.
 // It exists to validate the control-plane independently of the data-plane
 // modes (connect/join) that later phases build on top of it.
-func newRegisterCommand(deps Dependencies) *cobra.Command {
-	var serverAddr string
+func newRegisterCommand(deps Dependencies, defaults Defaults) *cobra.Command {
+	var serverAddr = defaults.Server
 
 	cmd := &cobra.Command{
 		Use:   "register",
@@ -30,7 +30,7 @@ func newRegisterCommand(deps Dependencies) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&serverAddr, "server", "", "адрес rendezvous-сервера")
+	cmd.Flags().StringVar(&serverAddr, "server", serverAddr, "адрес rendezvous-сервера")
 
 	return cmd
 }
