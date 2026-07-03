@@ -218,9 +218,18 @@ func Establish(ctx context.Context, serverAddr, stunAddr, identityPath, trustSto
 		return nil, "", "", fmt.Errorf("app: resolve stun addr: %w", err)
 	}
 
+	// Best-effort, not fatal: some platforms flatly refuse to enumerate
+	// local interfaces from an app process — Android's SELinux policy
+	// blocks regular apps from opening the netlink route socket Go's
+	// net.InterfaceAddrs() needs (confirmed live: "netlinkrib: permission
+	// denied" on a real device/emulator, every single time, not
+	// intermittent). Host candidates only help same-LAN peers punch
+	// without going through STUN/relay at all; the server-reflexive
+	// candidate gathered right below and relay fallback still work
+	// without them, so losing them shouldn't take down the whole session.
 	hostCandidates, err := nat.HostCandidates(udpConn)
 	if err != nil {
-		return nil, "", "", fmt.Errorf("app: gather host candidates: %w", err)
+		hostCandidates = nil
 	}
 	reflexive, err := nat.DiscoverServerReflexive(ctx, udpConn, stunUDPAddr.AddrPort())
 	if err != nil {

@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -24,6 +26,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import spurmobile.Client
+import spurmobile.CodeCallback
+import spurmobile.PortForward
 import spurmobile.Spurmobile
 
 class MainActivity : ComponentActivity() {
@@ -49,11 +53,19 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun SkeletonScreen(coreVersion: String, client: Client) {
     var serverAddr by remember { mutableStateOf("") }
+    var stunAddr by remember { mutableStateOf("") }
     var status by remember { mutableStateOf("не зарегистрирован") }
     val scope = rememberCoroutineScope()
 
+    var toOrRoom by remember { mutableStateOf("") }
+    var isRoom by remember { mutableStateOf(false) }
+    var port by remember { mutableStateOf("") }
+    var pfStatus by remember { mutableStateOf("остановлено") }
+    var pairingCode by remember { mutableStateOf("") }
+    var activeForward by remember { mutableStateOf<PortForward?>(null) }
+
     Column(
-        modifier = Modifier.fillMaxWidth().padding(24.dp),
+        modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text("spur")
@@ -78,5 +90,81 @@ fun SkeletonScreen(coreVersion: String, client: Client) {
             Text("Register")
         }
         Text(status)
+
+        Text("Port forward")
+        OutlinedTextField(
+            value = stunAddr,
+            onValueChange = { stunAddr = it },
+            label = { Text("stun address") },
+        )
+        OutlinedTextField(
+            value = toOrRoom,
+            onValueChange = { toOrRoom = it },
+            label = { Text(if (isRoom) "room" else "to (peer-id/код, пусто — режим хоста)") },
+        )
+        OutlinedTextField(
+            value = port,
+            onValueChange = { port = it },
+            label = { Text("порт") },
+        )
+        Button(onClick = { isRoom = !isRoom }) {
+            Text(if (isRoom) "режим: room (нажмите для to/код)" else "режим: to/код (нажмите для room)")
+        }
+
+        val to = if (isRoom) "" else toOrRoom
+        val room = if (isRoom) toOrRoom else ""
+        val onCode = CodeCallback { code -> pairingCode = code }
+
+        Button(onClick = {
+            scope.launch {
+                pfStatus = "устанавливаем канал..."
+                pairingCode = ""
+                try {
+                    val portNum = port.toLong()
+                    val fwd = withContext(Dispatchers.IO) {
+                        client.startConnect(serverAddr, stunAddr, to, room, portNum, onCode)
+                    }
+                    activeForward = fwd
+                    pfStatus = "connect: локальный порт $port проброшен"
+                    scope.launch(Dispatchers.IO) {
+                        val err = runCatching { fwd.await() }.exceptionOrNull()
+                        pfStatus = if (err != null) "connect: завершилось с ошибкой: ${err.message}" else "connect: остановлено"
+                    }
+                } catch (e: Exception) {
+                    pfStatus = "ошибка: ${e.message}"
+                }
+            }
+        }) {
+            Text("Start connect")
+        }
+        Button(onClick = {
+            scope.launch {
+                pfStatus = "устанавливаем канал..."
+                pairingCode = ""
+                try {
+                    val portNum = port.toLong()
+                    val fwd = withContext(Dispatchers.IO) {
+                        client.startExpose(serverAddr, stunAddr, to, room, portNum, onCode)
+                    }
+                    activeForward = fwd
+                    pfStatus = "expose: локальный сервис на порту $port открыт"
+                    scope.launch(Dispatchers.IO) {
+                        val err = runCatching { fwd.await() }.exceptionOrNull()
+                        pfStatus = if (err != null) "expose: завершилось с ошибкой: ${err.message}" else "expose: остановлено"
+                    }
+                } catch (e: Exception) {
+                    pfStatus = "ошибка: ${e.message}"
+                }
+            }
+        }) {
+            Text("Start expose")
+        }
+        Button(onClick = { activeForward?.stop() }) {
+            Text("Stop")
+        }
+        if (pairingCode.isNotEmpty()) {
+            Text("код для подключения: $pairingCode")
+        }
+        Text(pfStatus)
     }
 }
