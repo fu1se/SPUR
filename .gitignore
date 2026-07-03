@@ -1,5 +1,0 @@
-/bin/
-/dist/
-*.db
-*.sqlite
-.env
