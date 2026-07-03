@@ -18,6 +18,7 @@ import (
 
 	"github.com/fu1se/spur/internal/adapter/cli"
 	"github.com/fu1se/spur/internal/adapter/controlclient"
+	"github.com/fu1se/spur/internal/adapter/rendezvous"
 	"github.com/fu1se/spur/internal/domain"
 	"github.com/fu1se/spur/internal/infra"
 )
@@ -112,7 +113,7 @@ func register(ctx context.Context, serverAddr string, onVersionMismatch cli.Vers
 		return cli.RegisterResult{}, fmt.Errorf("app: generate ephemeral key: %w", err)
 	}
 
-	tlsConf, err := controlClientTLS(serverAddr)
+	tlsConf, err := rendezvous.ControlClientTLS(serverAddr)
 	if err != nil {
 		return cli.RegisterResult{}, err
 	}
@@ -127,7 +128,7 @@ func register(ctx context.Context, serverAddr string, onVersionMismatch cli.Vers
 	if err != nil {
 		return cli.RegisterResult{}, err
 	}
-	warnIfVersionMismatch(cli.Version(), result.ServerVersion, onVersionMismatch)
+	rendezvous.WarnIfVersionMismatch(cli.Version(), result.ServerVersion, rendezvous.VersionMismatchFunc(onVersionMismatch))
 
 	return cli.RegisterResult{
 		PeerID:          string(result.PeerID),
@@ -139,7 +140,7 @@ func register(ctx context.Context, serverAddr string, onVersionMismatch cli.Vers
 // Pure local operation, no network access — see resolveIdentityPath and
 // rendezvous's doc comment for why this bootstrap step exists.
 func whoami(identityPath string) (string, error) {
-	resolvedIdentityPath, err := resolveIdentityPath(identityPath)
+	resolvedIdentityPath, err := rendezvous.ResolveIdentityPath(identityPath)
 	if err != nil {
 		return "", err
 	}
@@ -154,31 +155,11 @@ func whoami(identityPath string) (string, error) {
 // network on the server, returning its current membership. Control-plane
 // only — see cli.ClientDependencies.JoinNetwork's doc comment.
 func joinNetwork(ctx context.Context, serverAddr, networkName, inviteToken, identityPath string, onVersionMismatch cli.VersionMismatchFunc) (cli.JoinNetworkResult, error) {
-	resolvedIdentityPath, err := resolveIdentityPath(identityPath)
-	if err != nil {
-		return cli.JoinNetworkResult{}, err
-	}
-	id, err := infra.LoadOrCreateIdentity(resolvedIdentityPath)
-	if err != nil {
-		return cli.JoinNetworkResult{}, fmt.Errorf("app: load identity: %w", err)
-	}
-
-	tlsConf, err := controlClientTLS(serverAddr)
-	if err != nil {
-		return cli.JoinNetworkResult{}, err
-	}
-
-	client, err := controlclient.Dial(ctx, serverAddr, tlsConf, infra.DefaultQUICConfig())
+	client, id, err := rendezvous.DialAndRegister(ctx, serverAddr, identityPath, cli.Version(), rendezvous.VersionMismatchFunc(onVersionMismatch))
 	if err != nil {
 		return cli.JoinNetworkResult{}, err
 	}
 	defer client.Close()
-
-	regResult, err := client.Register(ctx, id.PublicKey, cli.Version())
-	if err != nil {
-		return cli.JoinNetworkResult{}, err
-	}
-	warnIfVersionMismatch(cli.Version(), regResult.ServerVersion, onVersionMismatch)
 
 	network, err := client.JoinNetwork(ctx, networkName, inviteToken, id.PublicKey)
 	if err != nil {

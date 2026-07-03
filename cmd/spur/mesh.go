@@ -12,6 +12,7 @@ import (
 
 	"github.com/fu1se/spur/internal/adapter/cli"
 	"github.com/fu1se/spur/internal/adapter/controlclient"
+	"github.com/fu1se/spur/internal/adapter/rendezvous"
 	"github.com/fu1se/spur/internal/adapter/wgmesh"
 	"github.com/fu1se/spur/internal/domain"
 	"github.com/fu1se/spur/internal/infra"
@@ -46,7 +47,7 @@ const meshRefreshInterval = 5 * time.Second
 // TUN device and assigning it an address changes real system network
 // state.
 func join(ctx context.Context, serverAddr, stunAddr, networkName, inviteToken, identityPath string, onSelfID func(string), onVersionMismatch cli.VersionMismatchFunc) error {
-	resolvedIdentityPath, err := resolveIdentityPath(identityPath)
+	resolvedIdentityPath, err := rendezvous.ResolveIdentityPath(identityPath)
 	if err != nil {
 		return err
 	}
@@ -57,7 +58,7 @@ func join(ctx context.Context, serverAddr, stunAddr, networkName, inviteToken, i
 	self := domain.DerivePeerID(id.PublicKey)
 	onSelfID(string(self))
 
-	controlTLSConf, err := controlClientTLS(serverAddr)
+	controlTLSConf, err := rendezvous.ControlClientTLS(serverAddr)
 	if err != nil {
 		return err
 	}
@@ -71,7 +72,7 @@ func join(ctx context.Context, serverAddr, stunAddr, networkName, inviteToken, i
 	if err != nil {
 		return fmt.Errorf("app: register: %w", err)
 	}
-	warnIfVersionMismatch(cli.Version(), regResult.ServerVersion, onVersionMismatch)
+	rendezvous.WarnIfVersionMismatch(cli.Version(), regResult.ServerVersion, rendezvous.VersionMismatchFunc(onVersionMismatch))
 
 	network, err := joinClient.JoinNetwork(ctx, networkName, inviteToken, id.PublicKey)
 	if err != nil {
@@ -105,7 +106,7 @@ func join(ctx context.Context, serverAddr, stunAddr, networkName, inviteToken, i
 		self:         self,
 		bind:         bind,
 		dev:          dev,
-		connected:    make(map[domain.PeerID]*establishedTunnel),
+		connected:    make(map[domain.PeerID]*rendezvous.Tunnel),
 	}
 	defer mesh.closeAll()
 
@@ -149,7 +150,7 @@ type meshPeers struct {
 	dev                                *wgmesh.Device
 
 	mu        sync.Mutex
-	connected map[domain.PeerID]*establishedTunnel
+	connected map[domain.PeerID]*rendezvous.Tunnel
 }
 
 // connectToNewMembers rendezvous-es (concurrently) with every member of
@@ -204,14 +205,15 @@ func (m *meshPeers) reapDeadConnection(peer domain.PeerID) bool {
 }
 
 func (m *meshPeers) connectOne(ctx context.Context, mem domain.MeshMember) {
-	tun, _, _, err := rendezvous(ctx, m.serverAddr, m.stunAddr, m.identityPath, fixedCounterpart(mem.PeerID), func(string) {}, nil)
+	resolve := rendezvous.FixedCounterpart(mem.PeerID)
+	tun, _, _, err := rendezvous.Establish(ctx, m.serverAddr, m.stunAddr, m.identityPath, cli.Version(), resolve, func(string) {}, nil)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "spur: mesh: rendezvous with %s failed: %v\n", mem.PeerID, err)
 		return
 	}
 
 	isDialer := domain.IsDialer(m.self, mem.PeerID)
-	stream, err := meshStream(ctx, tun.conn, m.self, mem.PeerID)
+	stream, err := meshStream(ctx, tun.Conn, m.self, mem.PeerID)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "spur: mesh: open stream to %s failed: %v\n", mem.PeerID, err)
 		tun.Close()

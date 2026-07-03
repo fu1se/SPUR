@@ -7,6 +7,7 @@ import (
 
 	"github.com/fu1se/spur/internal/adapter/cli"
 	"github.com/fu1se/spur/internal/adapter/localfs"
+	"github.com/fu1se/spur/internal/adapter/rendezvous"
 	"github.com/fu1se/spur/internal/usecase"
 )
 
@@ -30,13 +31,14 @@ func send(ctx context.Context, serverAddr, stunAddr, counterpartID, roomName, id
 		return fmt.Errorf("app: %w", err)
 	}
 
-	tun, _, _, err := rendezvous(ctx, serverAddr, stunAddr, identityPath, counterpartResolverFor(counterpartID, roomName, onCode), onSelfID, onVersionMismatch)
+	resolve := rendezvous.CounterpartResolverFor(counterpartID, roomName, rendezvous.OnCodeFunc(onCode))
+	tun, _, _, err := rendezvous.Establish(ctx, serverAddr, stunAddr, identityPath, cli.Version(), resolve, onSelfID, rendezvous.VersionMismatchFunc(onVersionMismatch))
 	if err != nil {
 		return err
 	}
 	defer tun.Close()
 
-	return usecase.SendFiles{Source: localfs.Source{Path: path}, Tunnel: tun.conn, OnProgress: usecase.TransferProgress(onProgress)}.Run(ctx)
+	return usecase.SendFiles{Source: localfs.Source{Path: path}, Tunnel: tun.Conn, OnProgress: usecase.TransferProgress(onProgress)}.Run(ctx)
 }
 
 // receive is "spur receive": accept whatever counterpart streams via
@@ -46,7 +48,8 @@ func send(ctx context.Context, serverAddr, stunAddr, counterpartID, roomName, id
 // usecase.ReceiveFiles.OnResumeOffer — see cli.ResumeOfferFunc's doc
 // comment.
 func receive(ctx context.Context, serverAddr, stunAddr, counterpartID, roomName, identityPath, destDir string, onSelfID func(string), onProgress cli.ProgressFunc, onCode cli.OnCodeFunc, onResumeOffer cli.ResumeOfferFunc, onVersionMismatch cli.VersionMismatchFunc) error {
-	tun, _, _, err := rendezvous(ctx, serverAddr, stunAddr, identityPath, counterpartResolverFor(counterpartID, roomName, onCode), onSelfID, onVersionMismatch)
+	resolve := rendezvous.CounterpartResolverFor(counterpartID, roomName, rendezvous.OnCodeFunc(onCode))
+	tun, _, _, err := rendezvous.Establish(ctx, serverAddr, stunAddr, identityPath, cli.Version(), resolve, onSelfID, rendezvous.VersionMismatchFunc(onVersionMismatch))
 	if err != nil {
 		return err
 	}
@@ -54,7 +57,7 @@ func receive(ctx context.Context, serverAddr, stunAddr, counterpartID, roomName,
 
 	return usecase.ReceiveFiles{
 		Sink:          localfs.Sink{DestDir: destDir},
-		Tunnel:        tun.conn,
+		Tunnel:        tun.Conn,
 		OnProgress:    usecase.TransferProgress(onProgress),
 		OnResumeOffer: usecase.ResumeOffer(onResumeOffer),
 	}.Run(ctx)
