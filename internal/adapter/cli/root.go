@@ -151,10 +151,15 @@ type ServerDependencies struct {
 // per-invocation by passing the flag explicitly.
 func NewClientRootCommand(deps ClientDependencies, defaults ClientDefaults) *cobra.Command {
 	root := &cobra.Command{
-		Use:           "spur",
-		Short:         "spur — прямое подключение в локальную сеть в обход NAT (клиент)",
-		SilenceUsage:  true,
-		SilenceErrors: false,
+		Use:          "spur",
+		Short:        "spur — прямое подключение в локальную сеть в обход NAT (клиент)",
+		SilenceUsage: true,
+		// SilenceErrors: cobra's own "Error: <err>" print bypasses
+		// Explain — the composition root (cmd/spur's main) prints the
+		// error itself after ExecuteContext returns, running it through
+		// Explain first for a human-friendly message instead of a bare
+		// Go error chain.
+		SilenceErrors: true,
 	}
 
 	root.AddCommand(
@@ -183,7 +188,7 @@ func NewServerRootCommand(deps ServerDependencies, defaults ServerDefaults) *cob
 		Use:           "spur-server",
 		Short:         "spur — rendezvous/signaling-сервер (control plane + STUN + relay fallback)",
 		SilenceUsage:  true,
-		SilenceErrors: false,
+		SilenceErrors: true, // see NewClientRootCommand's doc comment on the same field
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cmd.Printf("control-plane слушает на %s, STUN — на %s, состояние — в %s\n", listenAddr, stunAddr, dbPath)
 			return deps.RunServer(cmd.Context(), listenAddr, stunAddr, dbPath, verbose)

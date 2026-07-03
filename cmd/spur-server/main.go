@@ -46,6 +46,7 @@ func main() {
 	}, defaults)
 
 	if err := root.ExecuteContext(ctx); err != nil {
+		fmt.Fprintln(os.Stderr, "Error:", cli.Explain(err))
 		os.Exit(1)
 	}
 }
