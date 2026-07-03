@@ -338,6 +338,24 @@ command, you can set them once in `~/.config/spur/config.json`
 Command-line flags always take priority over the config file; the file
 itself is optional — its absence doesn't change any default behavior.
 
+## Language
+
+`spur` speaks Russian and English. By default it picks whichever matches
+your system locale (`LANG`/`LC_ALL`/`LC_MESSAGES`) — Russian if it's set
+to a Russian locale, English otherwise. To override it explicitly:
+
+```sh
+spur lang en    # always use English from now on
+spur lang ru    # always use Russian from now on
+spur lang auto  # go back to auto-detecting from the system locale
+spur lang       # show the current effective language and how it was chosen
+```
+
+The choice is saved to `~/.config/spur/config.json` and applies to every
+future invocation. `spur-server` doesn't have a persistent config file
+(see [Config file](#config-file)), so it always auto-detects from its
+own process's locale.
+
 ## All commands
 
 | Command | What it does |
@@ -353,6 +371,7 @@ itself is optional — its absence doesn't change any default behavior.
 | `spur receive` | Receive a file/directory from a peer running `spur send` |
 | `spur room create` | Create a long-term, two-member room and get an invite token |
 | `spur room join` | Join a room created by someone else, using its invite token |
+| `spur lang` | Show or change the UI language (see [Language](#language)) |
 | `spur version` / `spur-server version` | Build version |
 
 Every command has `--help` with the full list of flags.

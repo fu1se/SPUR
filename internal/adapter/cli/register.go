@@ -16,16 +16,16 @@ func newRegisterCommand(deps ClientDependencies, defaults ClientDefaults) *cobra
 
 	cmd := &cobra.Command{
 		Use:   "register",
-		Short: "Зарегистрироваться на rendezvous-сервере и показать наблюдаемый им адрес",
+		Short: msg().RegisterShort,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if serverAddr == "" {
-				return errors.New("register: укажите --server")
+				return errors.New(msg().RegisterMissingServer)
 			}
 			result, err := deps.Register(cmd.Context(), serverAddr, newVersionWarningPrinter(cmd))
 			if err != nil {
 				return err
 			}
-			cmd.Printf("observed-address: %s\n", result.ObservedAddress)
+			cmd.Printf(msg().RegisterObservedAddress, result.ObservedAddress)
 			// peer-id specifically goes to stdout via fmt.Fprintln, not
 			// cmd.Printf (which defaults to stderr, see whoami.go's same
 			// comment): register is the other command that surfaces a
@@ -37,7 +37,7 @@ func newRegisterCommand(deps ClientDependencies, defaults ClientDefaults) *cobra
 		},
 	}
 
-	cmd.Flags().StringVar(&serverAddr, "server", serverAddr, "адрес rendezvous-сервера")
+	cmd.Flags().StringVar(&serverAddr, "server", serverAddr, msg().FlagServerPlain)
 
 	return cmd
 }

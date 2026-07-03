@@ -2,6 +2,7 @@ package cli
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/spf13/cobra"
 )
@@ -18,26 +19,26 @@ func newExposeCommand(deps ClientDependencies, defaults ClientDefaults) *cobra.C
 
 	cmd := &cobra.Command{
 		Use:   "expose",
-		Short: "Открыть локальный сервис указанному пиру (port-forward режим)",
+		Short: msg().ExposeShort,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if serverAddr == "" || stunAddr == "" || targetPort == 0 {
-				return errors.New("expose: укажите --server, --stun-server и --port")
+				return errors.New(msg().ExposeMissingFlags)
 			}
 			if peerID != "" && roomName != "" {
-				return errors.New("expose: укажите либо --to, либо --room, не оба сразу")
+				return fmt.Errorf(msg().BothToAndRoom, "expose")
 			}
 			return deps.Expose(cmd.Context(), serverAddr, stunAddr, peerID, roomName, identityPath, targetPort, func(selfID string) {
-				cmd.Printf("свой peer-id: %s\n", selfID)
+				cmd.Printf(msg().SelfIDPrinted, selfID)
 			}, newCodePrinter(cmd), newVersionWarningPrinter(cmd))
 		},
 	}
 
-	cmd.Flags().StringVar(&serverAddr, "server", serverAddr, "адрес rendezvous-сервера (control-канал)")
-	cmd.Flags().StringVar(&stunAddr, "stun-server", stunAddr, "адрес STUN-эндпоинта сервера")
-	cmd.Flags().StringVar(&peerID, "to", "", pairingToFlagHelp("пира, которому разрешено подключаться"))
-	cmd.Flags().StringVar(&roomName, "room", "", roomToFlagHelp("пиром, которому разрешено подключаться"))
-	cmd.Flags().StringVar(&identityPath, "identity", identityPath, "путь к файлу идентичности (по умолчанию — в конфиг-директории пользователя)")
-	cmd.Flags().IntVar(&targetPort, "port", 0, "локальный порт сервиса, который открываем")
+	cmd.Flags().StringVar(&serverAddr, "server", serverAddr, msg().FlagServer)
+	cmd.Flags().StringVar(&stunAddr, "stun-server", stunAddr, msg().FlagStunServer)
+	cmd.Flags().StringVar(&peerID, "to", "", pairingToFlagHelp(msg().ExposeToSubject))
+	cmd.Flags().StringVar(&roomName, "room", "", roomToFlagHelp(msg().ExposeRoomSubject))
+	cmd.Flags().StringVar(&identityPath, "identity", identityPath, msg().FlagIdentity)
+	cmd.Flags().IntVar(&targetPort, "port", 0, msg().FlagPort)
 
 	return cmd
 }

@@ -28,16 +28,20 @@ import (
 const interruptConfirmWindow = 3 * time.Second
 
 func main() {
-	ctx, stop := infra.ContextWithConfirmedInterrupt(context.Background(), interruptConfirmWindow, func() {
-		fmt.Fprintf(os.Stderr, "\nПолучен Ctrl+C. Нажмите ещё раз в течение %s, чтобы прервать.\n", interruptConfirmWindow)
-	})
-	defer stop()
-
 	defaults, err := loadDefaults()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+	// Resolved before building the command tree: Short/flag-help text is
+	// baked in at construction time, not at RunE time — see cli.SetLanguage's
+	// doc comment for why this can't happen any later.
+	cli.SetLanguage(defaults.Lang, infra.DetectSystemLanguage())
+
+	ctx, stop := infra.ContextWithConfirmedInterrupt(context.Background(), interruptConfirmWindow, func() {
+		fmt.Fprint(os.Stderr, cli.CtrlCWarningClient(interruptConfirmWindow))
+	})
+	defer stop()
 
 	root := cli.NewClientRootCommand(cli.ClientDependencies{
 		Register:    register,
@@ -50,10 +54,11 @@ func main() {
 		Receive:     receive,
 		CreateRoom:  createRoom,
 		JoinRoom:    joinRoom,
+		SetLanguage: setLanguage,
 	}, defaults)
 
 	if err := root.ExecuteContext(ctx); err != nil {
-		fmt.Fprintln(os.Stderr, "Error:", cli.Explain(err))
+		fmt.Fprintln(os.Stderr, cli.ErrorPrefix(), cli.Explain(err))
 		os.Exit(1)
 	}
 }
@@ -74,7 +79,27 @@ func loadDefaults() (cli.ClientDefaults, error) {
 		Server:     cfg.Server,
 		StunServer: cfg.StunServer,
 		Identity:   cfg.Identity,
+		Lang:       cfg.Lang,
 	}, nil
+}
+
+// setLanguage is "spur lang <ru|en|auto>": persists a UI language
+// override to the config file for future invocations (lang == "" clears
+// it back to system-locale auto-detection). Doesn't touch every other
+// field in the config file — loads the existing one first so a saved
+// --server/--stun-server/--identity default isn't wiped out by changing
+// the language.
+func setLanguage(lang string) error {
+	path, err := infra.DefaultConfigPath()
+	if err != nil {
+		return err
+	}
+	cfg, err := infra.LoadConfig(path)
+	if err != nil {
+		return err
+	}
+	cfg.Lang = lang
+	return infra.SaveConfig(path, cfg)
 }
 
 // register dials serverAddr and registers an ephemeral identity. Real,

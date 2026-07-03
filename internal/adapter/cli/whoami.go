@@ -11,7 +11,7 @@ func newWhoamiCommand(deps ClientDependencies, defaults ClientDefaults) *cobra.C
 
 	cmd := &cobra.Command{
 		Use:   "whoami",
-		Short: "Показать свой peer-id (без обращения к сети)",
+		Short: msg().WhoamiShort,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id, err := deps.Whoami(identityPath)
 			if err != nil {
@@ -26,7 +26,7 @@ func newWhoamiCommand(deps ClientDependencies, defaults ClientDefaults) *cobra.C
 		},
 	}
 
-	cmd.Flags().StringVar(&identityPath, "identity", identityPath, "путь к файлу идентичности (по умолчанию — в конфиг-директории пользователя)")
+	cmd.Flags().StringVar(&identityPath, "identity", identityPath, msg().FlagIdentity)
 
 	return cmd
 }

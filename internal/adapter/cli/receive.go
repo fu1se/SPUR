@@ -2,6 +2,7 @@ package cli
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/spf13/cobra"
 )
@@ -18,28 +19,28 @@ func newReceiveCommand(deps ClientDependencies, defaults ClientDefaults) *cobra.
 
 	cmd := &cobra.Command{
 		Use:   "receive",
-		Short: "Принять файл или директорию от пира, который запустил `spur send`",
+		Short: msg().ReceiveShort,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if serverAddr == "" || stunAddr == "" || outDir == "" {
-				return errors.New("receive: укажите --server, --stun-server и --out")
+				return errors.New(msg().ReceiveMissingFlags)
 			}
 			if peerID != "" && roomName != "" {
-				return errors.New("receive: укажите либо --to, либо --room, не оба сразу")
+				return fmt.Errorf(msg().BothToAndRoom, "receive")
 			}
 			err := deps.Receive(cmd.Context(), serverAddr, stunAddr, peerID, roomName, identityPath, outDir, func(selfID string) {
-				cmd.Printf("свой peer-id: %s\n", selfID)
-			}, newProgressPrinter(cmd.ErrOrStderr(), "приём"), newCodePrinter(cmd), newResumePrompt(cmd), newVersionWarningPrinter(cmd))
+				cmd.Printf(msg().SelfIDPrinted, selfID)
+			}, newProgressPrinter(cmd.ErrOrStderr(), msg().ProgressVerbReceive), newCodePrinter(cmd), newResumePrompt(cmd), newVersionWarningPrinter(cmd))
 			progressDone(cmd.ErrOrStderr())
 			return err
 		},
 	}
 
-	cmd.Flags().StringVar(&serverAddr, "server", serverAddr, "адрес rendezvous-сервера (control-канал)")
-	cmd.Flags().StringVar(&stunAddr, "stun-server", stunAddr, "адрес STUN-эндпоинта сервера")
-	cmd.Flags().StringVar(&peerID, "to", "", pairingToFlagHelp("пира, которому разрешено отправлять файлы"))
-	cmd.Flags().StringVar(&roomName, "room", "", roomToFlagHelp("пиром, которому разрешено отправлять файлы"))
-	cmd.Flags().StringVar(&identityPath, "identity", identityPath, "путь к файлу идентичности (по умолчанию — в конфиг-директории пользователя)")
-	cmd.Flags().StringVar(&outDir, "out", "", "директория, куда сохранять принятые файлы")
+	cmd.Flags().StringVar(&serverAddr, "server", serverAddr, msg().FlagServer)
+	cmd.Flags().StringVar(&stunAddr, "stun-server", stunAddr, msg().FlagStunServer)
+	cmd.Flags().StringVar(&peerID, "to", "", pairingToFlagHelp(msg().ReceiveToSubject))
+	cmd.Flags().StringVar(&roomName, "room", "", roomToFlagHelp(msg().ReceiveRoomSubject))
+	cmd.Flags().StringVar(&identityPath, "identity", identityPath, msg().FlagIdentity)
+	cmd.Flags().StringVar(&outDir, "out", "", msg().FlagOutDir)
 
 	return cmd
 }

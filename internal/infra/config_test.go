@@ -40,3 +40,24 @@ func TestLoadConfig_InvalidJSONFails(t *testing.T) {
 	_, err := infra.LoadConfig(path)
 	require.Error(t, err)
 }
+
+func TestSaveConfig_RoundTrips(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "nested", "config.json")
+	cfg := infra.Config{Server: "example.com:4443", Lang: "en"}
+
+	require.NoError(t, infra.SaveConfig(path, cfg))
+
+	loaded, err := infra.LoadConfig(path)
+	require.NoError(t, err)
+	require.Equal(t, cfg, loaded)
+}
+
+func TestSaveConfig_OverwritesExisting(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	require.NoError(t, infra.SaveConfig(path, infra.Config{Server: "old.example.com:4443"}))
+	require.NoError(t, infra.SaveConfig(path, infra.Config{Lang: "ru"}))
+
+	loaded, err := infra.LoadConfig(path)
+	require.NoError(t, err)
+	require.Equal(t, infra.Config{Lang: "ru"}, loaded)
+}

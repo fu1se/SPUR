@@ -11,7 +11,7 @@ import (
 // expose/send/receive — an alternative to --to for two people who
 // already set up a room via `spur room create`/`spur room join`.
 func roomToFlagHelp(subject string) string {
-	return fmt.Sprintf("имя долговременной комнаты (см. 'spur room create'/'spur room join'), связывающей вас с %s — альтернатива --to, не нужно повторно обмениваться кодом/peer-id при каждом подключении", subject)
+	return fmt.Sprintf(msg().RoomToFlagHelpFormat, subject)
 }
 
 // newRoomCommand groups the two room-management subcommands under
@@ -21,7 +21,7 @@ func roomToFlagHelp(subject string) string {
 func newRoomCommand(deps ClientDependencies, defaults ClientDefaults) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "room",
-		Short: "Управление долговременными комнатами (постоянная привязка к конкретному собеседнику)",
+		Short: msg().RoomParentShort,
 	}
 	cmd.AddCommand(
 		newRoomCreateCommand(deps, defaults),
@@ -39,25 +39,25 @@ func newRoomCreateCommand(deps ClientDependencies, defaults ClientDefaults) *cob
 
 	cmd := &cobra.Command{
 		Use:   "create",
-		Short: "Создать новую долговременную комнату и получить инвайт-токен для второго участника",
+		Short: msg().RoomCreateShort,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if serverAddr == "" || roomName == "" {
-				return errors.New("room create: укажите --server и --room")
+				return errors.New(msg().RoomCreateMissingFlags)
 			}
 			result, err := deps.CreateRoom(cmd.Context(), serverAddr, roomName, identityPath, newVersionWarningPrinter(cmd))
 			if err != nil {
 				return err
 			}
-			cmd.Printf("комната %q создана.\n", roomName)
-			cmd.Printf("инвайт-токен (передайте второму участнику, ему нужно указать его один раз в `spur room join`): %s\n", result.InviteToken)
-			cmd.Printf("после того как второй участник присоединится, используйте --room %s вместо --to в connect/expose/send/receive.\n", roomName)
+			cmd.Printf(msg().RoomCreatedPrinted, roomName)
+			cmd.Printf(msg().RoomInviteToken, result.InviteToken)
+			cmd.Printf(msg().RoomUsageHint, roomName)
 			return nil
 		},
 	}
 
-	cmd.Flags().StringVar(&serverAddr, "server", serverAddr, "адрес rendezvous-сервера")
-	cmd.Flags().StringVar(&roomName, "room", "", "имя новой комнаты")
-	cmd.Flags().StringVar(&identityPath, "identity", identityPath, "путь к файлу идентичности (по умолчанию — в конфиг-директории пользователя)")
+	cmd.Flags().StringVar(&serverAddr, "server", serverAddr, msg().FlagServerPlain)
+	cmd.Flags().StringVar(&roomName, "room", "", msg().FlagRoomNameNew)
+	cmd.Flags().StringVar(&identityPath, "identity", identityPath, msg().FlagIdentity)
 
 	return cmd
 }
@@ -72,24 +72,24 @@ func newRoomJoinCommand(deps ClientDependencies, defaults ClientDefaults) *cobra
 
 	cmd := &cobra.Command{
 		Use:   "join",
-		Short: "Присоединиться ко второй, уже созданной комнате по инвайт-токену",
+		Short: msg().RoomJoinShort,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if serverAddr == "" || roomName == "" {
-				return errors.New("room join: укажите --server и --room")
+				return errors.New(msg().RoomJoinMissingFlags)
 			}
 			if err := deps.JoinRoom(cmd.Context(), serverAddr, roomName, inviteToken, identityPath, newVersionWarningPrinter(cmd)); err != nil {
 				return err
 			}
-			cmd.Printf("вы присоединились к комнате %q.\n", roomName)
-			cmd.Printf("теперь используйте --room %s вместо --to в connect/expose/send/receive.\n", roomName)
+			cmd.Printf(msg().RoomJoinedPrinted, roomName)
+			cmd.Printf(msg().RoomUsageHint, roomName)
 			return nil
 		},
 	}
 
-	cmd.Flags().StringVar(&serverAddr, "server", serverAddr, "адрес rendezvous-сервера")
-	cmd.Flags().StringVar(&roomName, "room", "", "имя комнаты")
-	cmd.Flags().StringVar(&inviteToken, "invite", "", "инвайт-токен, полученный от создателя комнаты (не нужен при повторном join)")
-	cmd.Flags().StringVar(&identityPath, "identity", identityPath, "путь к файлу идентичности (по умолчанию — в конфиг-директории пользователя)")
+	cmd.Flags().StringVar(&serverAddr, "server", serverAddr, msg().FlagServerPlain)
+	cmd.Flags().StringVar(&roomName, "room", "", msg().FlagRoomName)
+	cmd.Flags().StringVar(&inviteToken, "invite", "", msg().FlagRoomInvite)
+	cmd.Flags().StringVar(&identityPath, "identity", identityPath, msg().FlagIdentity)
 
 	return cmd
 }

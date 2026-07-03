@@ -6,19 +6,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// pairingCodeTTLHint is a human-readable duration matching
-// usecase.PairingCodeTTL. Duplicated as a plain string rather than
-// imported: cli must not depend on usecase (see ProgressFunc's doc
-// comment for the same rule applied elsewhere) — this is purely a
-// user-facing hint, not logic, so the duplication is low-risk, but keep
-// it in sync if PairingCodeTTL ever changes.
-const pairingCodeTTLHint = "10 минут"
-
 // pairingToFlagHelp is the shared --to flag description text for every
 // command that accepts either a full peer ID, a short pairing code, or
 // (left empty) host mode.
 func pairingToFlagHelp(subject string) string {
-	return fmt.Sprintf("идентификатор или код %s; не указан — сгенерировать свой код и ждать подключения (см. 'spur whoami' для постоянного ID, код — одноразовый на %s)", subject, pairingCodeTTLHint)
+	return fmt.Sprintf(msg().PairingToFlagHelp, subject, msg().PairingCodeTTLHint)
 }
 
 // newCodePrinter returns an OnCodeFunc that prints a freshly minted
@@ -29,7 +21,7 @@ func pairingToFlagHelp(subject string) string {
 // package's existing convention throughout).
 func newCodePrinter(cmd *cobra.Command) OnCodeFunc {
 	return func(code string) {
-		cmd.Printf("Код для подключения: %s\n", code)
-		cmd.Printf("Сообщите его собеседнику — он должен указать этот код в --to. Ждём подключения (до %s)...\n", pairingCodeTTLHint)
+		cmd.Printf(msg().CodePrintedLine1, code)
+		cmd.Printf(msg().CodePrintedLine2, msg().PairingCodeTTLHint)
 	}
 }

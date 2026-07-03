@@ -43,6 +43,13 @@ type ClientDefaults struct {
 	Server     string
 	StunServer string
 	Identity   string
+
+	// Lang is the raw config-file language override (empty if the
+	// config file has none set) — used only to tell `spur lang` (with no
+	// argument) whether the language currently in effect (SetLanguage,
+	// already applied before NewClientRootCommand was called) came from
+	// an explicit override or from system-locale auto-detection.
+	Lang string
 }
 
 // ServerDefaults holds fallback values for server flags, loaded in
@@ -157,6 +164,14 @@ type ClientDependencies struct {
 	// onResumeOffer: see ResumeOfferFunc. Blocks until the transfer
 	// finishes or fails.
 	Receive func(ctx context.Context, serverAddr, stunAddr, peerID, roomName, identityPath, destDir string, onSelfID func(selfID string), onProgress ProgressFunc, onCode OnCodeFunc, onResumeOffer ResumeOfferFunc, onVersionMismatch VersionMismatchFunc) error
+
+	// SetLanguage is "spur lang": persists a UI language override (or
+	// clears it, for lang == "") to the config file for future
+	// invocations. Doesn't affect the language already in effect for
+	// this process (SetLanguage the package-level function was already
+	// called, before this command tree was even built) — just what the
+	// next invocation picks up.
+	SetLanguage func(lang string) error
 }
 
 // RoomResult is what a successful `spur room create` reports back to the
@@ -225,7 +240,7 @@ type ServerDependencies struct {
 func NewClientRootCommand(deps ClientDependencies, defaults ClientDefaults) *cobra.Command {
 	root := &cobra.Command{
 		Use:          "spur",
-		Short:        "spur — прямое подключение в локальную сеть в обход NAT (клиент)",
+		Short:        msg().RootClientShort,
 		SilenceUsage: true,
 		// SilenceErrors: cobra's own "Error: <err>" print bypasses
 		// Explain — the composition root (cmd/spur's main) prints the
@@ -246,6 +261,7 @@ func NewClientRootCommand(deps ClientDependencies, defaults ClientDefaults) *cob
 		newSendCommand(deps, defaults),
 		newReceiveCommand(deps, defaults),
 		newRoomCommand(deps, defaults),
+		newLangCommand(deps, defaults),
 	)
 
 	return root
@@ -260,19 +276,19 @@ func NewServerRootCommand(deps ServerDependencies, defaults ServerDefaults) *cob
 
 	root := &cobra.Command{
 		Use:           "spur-server",
-		Short:         "spur — rendezvous/signaling-сервер (control plane + STUN + relay fallback)",
+		Short:         msg().RootServerShort,
 		SilenceUsage:  true,
 		SilenceErrors: true, // see NewClientRootCommand's doc comment on the same field
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cmd.Printf("control-plane слушает на %s, STUN — на %s, состояние — в %s\n", listenAddr, stunAddr, dbPath)
+			cmd.Printf(msg().ServerListening, listenAddr, stunAddr, dbPath)
 			return deps.RunServer(cmd.Context(), listenAddr, stunAddr, dbPath, verbose)
 		},
 	}
 
-	root.Flags().StringVar(&listenAddr, "listen", ":4443", "адрес control-канала (QUIC)")
-	root.Flags().StringVar(&stunAddr, "stun-listen", ":4444", "адрес STUN-эндпоинта (UDP)")
-	root.Flags().StringVar(&dbPath, "db", defaults.State, "путь к файлу состояния сервера (SQLite)")
-	root.Flags().BoolVar(&verbose, "verbose", false, "подробные (debug-уровня) логи вместо info")
+	root.Flags().StringVar(&listenAddr, "listen", ":4443", msg().FlagListen)
+	root.Flags().StringVar(&stunAddr, "stun-listen", ":4444", msg().FlagStunListen)
+	root.Flags().StringVar(&dbPath, "db", defaults.State, msg().FlagDB)
+	root.Flags().BoolVar(&verbose, "verbose", false, msg().FlagVerbose)
 
 	root.AddCommand(newVersionCommand())
 
@@ -282,7 +298,7 @@ func NewServerRootCommand(deps ServerDependencies, defaults ServerDefaults) *cob
 func newVersionCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "version",
-		Short: "Показать версию",
+		Short: msg().VersionShort,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			fmt.Fprintln(cmd.OutOrStdout(), version)
 			return nil

@@ -18,14 +18,18 @@ import (
 func newResumePrompt(cmd *cobra.Command) ResumeOfferFunc {
 	return func(filesWithData int, alreadyHave, total int64) bool {
 		out := cmd.ErrOrStderr()
-		fmt.Fprintf(out, "Обнаружена незавершённая передача: %d файл(ов), уже получено %s из %s.\n",
-			filesWithData, humanBytes(alreadyHave), humanBytes(total))
-		fmt.Fprint(out, "Продолжить с того места, где остановились? [Y/n] ")
+		fmt.Fprintf(out, msg().ResumeQuestion, filesWithData, humanBytes(alreadyHave), humanBytes(total))
+		fmt.Fprint(out, msg().ResumePrompt)
 
 		line, err := bufio.NewReader(cmd.InOrStdin()).ReadString('\n')
 		if err != nil && err != io.EOF {
 			return false
 		}
+		// Accepted regardless of the active UI language: a Russian-locale
+		// user might still type "y" out of habit, an English-locale user
+		// might type "да" having seen it before — no reason to reject
+		// either just because it doesn't match the language the question
+		// itself was asked in.
 		answer := strings.ToLower(strings.TrimSpace(line))
 		return answer == "" || answer == "y" || answer == "yes" || answer == "д" || answer == "да"
 	}

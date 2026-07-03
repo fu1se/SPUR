@@ -50,35 +50,35 @@ func newProgressPrinter(w io.Writer, verb string) ProgressFunc {
 			filePct = 100 * float64(fileDone) / float64(fileTotal)
 		}
 
-		overall := fmt.Sprintf("всего: %s", humanBytes(overallDone))
+		overall := fmt.Sprintf(msg().ProgressOverallNoTotal, humanBytes(overallDone))
 		if overallTotal > 0 {
-			overall = fmt.Sprintf("всего: %s/%s (%.0f%%)", humanBytes(overallDone), humanBytes(overallTotal), 100*float64(overallDone)/float64(overallTotal))
+			overall = fmt.Sprintf(msg().ProgressOverallWithTotal, humanBytes(overallDone), humanBytes(overallTotal), 100*float64(overallDone)/float64(overallTotal))
 		}
 
 		eta := ""
 		if remaining := overallTotal - overallDone; overallTotal > 0 && remaining > 0 && speed > 0 {
-			eta = fmt.Sprintf(" — осталось: %s", formatETA(float64(remaining)/speed))
+			eta = fmt.Sprintf(msg().ProgressETASuffix, formatETA(float64(remaining)/speed))
 		}
 
-		fmt.Fprintf(w, "\r\033[K%s %s: %s/%s (%.0f%%) — %s/с — %s%s",
+		fmt.Fprintf(w, msg().ProgressLine,
 			verb, name, humanBytes(fileDone), humanBytes(fileTotal), filePct, humanBytes(int64(speed)), overall, eta)
 	}
 }
 
 // formatETA renders a remaining-time estimate in seconds as a short
-// human string ("~45с", "~3м 20с", "~2ч 05м") — coarse on purpose: an ETA
-// derived from a short rolling speed sample (see speedWindow) is already
-// a rough guess, and displaying more precision than that would just be
-// noise that flickers between redraws.
+// human string ("~45с"/"~45s", "~3м 20с"/"~3m 20s", "~2ч 05м"/"~2h 05m")
+// — coarse on purpose: an ETA derived from a short rolling speed sample
+// (see speedWindow) is already a rough guess, and displaying more
+// precision than that would just be noise that flickers between redraws.
 func formatETA(seconds float64) string {
 	d := time.Duration(seconds) * time.Second
 	switch {
 	case d < time.Minute:
-		return fmt.Sprintf("~%dс", int(d.Seconds()))
+		return fmt.Sprintf(msg().ETASeconds, int(d.Seconds()))
 	case d < time.Hour:
-		return fmt.Sprintf("~%dм %02dс", int(d.Minutes()), int(d.Seconds())%60)
+		return fmt.Sprintf(msg().ETAMinutes, int(d.Minutes()), int(d.Seconds())%60)
 	default:
-		return fmt.Sprintf("~%dч %02dм", int(d.Hours()), int(d.Minutes())%60)
+		return fmt.Sprintf(msg().ETAHours, int(d.Hours()), int(d.Minutes())%60)
 	}
 }
 

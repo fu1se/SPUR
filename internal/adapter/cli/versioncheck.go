@@ -10,6 +10,6 @@ import "github.com/spf13/cobra"
 // too, so this never blocks the command from proceeding.
 func newVersionWarningPrinter(cmd *cobra.Command) VersionMismatchFunc {
 	return func(clientVersion, serverVersion string) {
-		cmd.Printf("Внимание: версия клиента (%s) отличается от версии сервера (%s) — некоторые функции могут работать некорректно. Обновите обе стороны до одной версии, если возникнут проблемы.\n", clientVersion, serverVersion)
+		cmd.Printf(msg().VersionMismatchWarning, clientVersion, serverVersion)
 	}
 }

@@ -36,8 +36,15 @@ import (
 const interruptConfirmWindow = 3 * time.Second
 
 func main() {
+	// spur-server has no persistent config file (see loadDefaults' doc
+	// comment) to hold a manual override the way the client's `spur lang`
+	// does, so this is always auto-detected from the system locale — set
+	// SPUR_SERVER's environment (LANG/LC_ALL/LC_MESSAGES) if it needs to
+	// differ from what the shell it's launched from reports.
+	cli.SetLanguage("", infra.DetectSystemLanguage())
+
 	ctx, stop := infra.ContextWithConfirmedInterrupt(context.Background(), interruptConfirmWindow, func() {
-		fmt.Fprintf(os.Stderr, "\nПолучен Ctrl+C. Нажмите ещё раз в течение %s, чтобы остановить сервер.\n", interruptConfirmWindow)
+		fmt.Fprint(os.Stderr, cli.CtrlCWarningServer(interruptConfirmWindow))
 	})
 	defer stop()
 
@@ -52,7 +59,7 @@ func main() {
 	}, defaults)
 
 	if err := root.ExecuteContext(ctx); err != nil {
-		fmt.Fprintln(os.Stderr, "Error:", cli.Explain(err))
+		fmt.Fprintln(os.Stderr, cli.ErrorPrefix(), cli.Explain(err))
 		os.Exit(1)
 	}
 }
