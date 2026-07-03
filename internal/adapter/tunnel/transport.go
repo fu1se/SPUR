@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"time"
 
 	"github.com/hashicorp/yamux"
 	"github.com/quic-go/quic-go"
@@ -61,20 +62,47 @@ func (t *Transport) establishQUIC(ctx context.Context, session domain.Session, i
 	return &quicConn{conn: conn}, nil
 }
 
+// yamuxConfig is shared by both the client and server side of a relay
+// session. yamux.DefaultConfig's ConnectionWriteTimeout (10s) is tuned
+// for a lightly loaded connection; on this codebase's relay path it also
+// carries a single bulk file/directory transfer (see usecase.SendFiles),
+// and yamux's keepalive ping shares the same outbound send queue as that
+// data — under sustained heavy writes, the ping frame can genuinely sit
+// queued behind in-flight data for more than 10s on a real (if merely
+// briefly congested, not actually dead) network path. yamux treats a
+// keepalive miss as fatal and tears down the whole session immediately
+// (see hashicorp/yamux's Session.keepalive/waitForSendErr), which was a
+// real bug found live: a 100GB relay transfer at ~7MB/s died at 19GB in
+// with "yamux: keepalive failed: i/o deadline reached" — the connection
+// was never actually down, the ping just lost the race against a large
+// in-flight write. A generous ConnectionWriteTimeout gives real
+// congestion room to clear before yamux gives up; genuinely dead
+// connections still get caught, just less eagerly. LogOutput is
+// discarded because yamux logs to stderr via the stdlib log package by
+// default (a different, unformatted style from the rest of this
+// codebase's output) and every failure here already surfaces properly as
+// a returned error from the affected Read/Write call.
+func yamuxConfig() *yamux.Config {
+	cfg := yamux.DefaultConfig()
+	cfg.ConnectionWriteTimeout = 60 * time.Second
+	cfg.LogOutput = io.Discard
+	return cfg
+}
+
 func establishYamux(relayStream io.ReadWriteCloser, isDialer bool) (port.TunnelConn, error) {
 	if relayStream == nil {
 		return nil, fmt.Errorf("tunnel: relay session without a relay stream")
 	}
 
 	if isDialer {
-		session, err := yamux.Client(relayStream, nil)
+		session, err := yamux.Client(relayStream, yamuxConfig())
 		if err != nil {
 			return nil, fmt.Errorf("tunnel: yamux client: %w", err)
 		}
 		return &yamuxConn{session: session}, nil
 	}
 
-	session, err := yamux.Server(relayStream, nil)
+	session, err := yamux.Server(relayStream, yamuxConfig())
 	if err != nil {
 		return nil, fmt.Errorf("tunnel: yamux server: %w", err)
 	}
