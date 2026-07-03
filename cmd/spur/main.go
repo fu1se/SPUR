@@ -14,8 +14,7 @@ import (
 	"crypto/rand"
 	"fmt"
 	"os"
-	"os/signal"
-	"syscall"
+	"time"
 
 	"github.com/fu1se/spur/internal/adapter/cli"
 	"github.com/fu1se/spur/internal/adapter/controlclient"
@@ -23,8 +22,15 @@ import (
 	"github.com/fu1se/spur/internal/infra"
 )
 
+// interruptConfirmWindow is how long a user has, after the first Ctrl+C,
+// to press it again before it's treated as accidental and ignored — long
+// enough for a deliberate second press, short enough not to feel broken.
+const interruptConfirmWindow = 3 * time.Second
+
 func main() {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	ctx, stop := infra.ContextWithConfirmedInterrupt(context.Background(), interruptConfirmWindow, func() {
+		fmt.Fprintf(os.Stderr, "\nПолучен Ctrl+C. Нажмите ещё раз в течение %s, чтобы прервать.\n", interruptConfirmWindow)
+	})
 	defer stop()
 
 	defaults, err := loadDefaults()

@@ -15,9 +15,8 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"os/signal"
 	"path/filepath"
-	"syscall"
+	"time"
 
 	"golang.org/x/sync/errgroup"
 
@@ -31,8 +30,15 @@ import (
 	"github.com/fu1se/spur/internal/usecase"
 )
 
+// interruptConfirmWindow: see cmd/spur/main.go's doc comment on the same
+// constant — a stray Ctrl+C in the server's terminal shouldn't take down
+// every client mid-session.
+const interruptConfirmWindow = 3 * time.Second
+
 func main() {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	ctx, stop := infra.ContextWithConfirmedInterrupt(context.Background(), interruptConfirmWindow, func() {
+		fmt.Fprintf(os.Stderr, "\nПолучен Ctrl+C. Нажмите ещё раз в течение %s, чтобы остановить сервер.\n", interruptConfirmWindow)
+	})
 	defer stop()
 
 	defaults, err := loadDefaults()

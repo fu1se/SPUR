@@ -161,6 +161,11 @@ After this, `localhost:2222` on the `connect` side is forwarded to port
 `22` on the remote machine. Both commands block the terminal and keep
 running until stopped (`Ctrl+C`).
 
+> A single Ctrl+C doesn't stop things immediately — it just warns. Press
+> it again within 3 seconds to confirm (protects a long transfer/session
+> from an accidental keypress). Applies to every command, including
+> `spur-server`.
+
 ### Mesh VPN: `join`
 
 A full virtual network between every participant over a real TUN
