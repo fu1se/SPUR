@@ -120,8 +120,9 @@ type ClientDependencies struct {
 	// "spur send" streams through the tunnel under destDir, recreating the
 	// relative directory structure the sender walked. identityPath,
 	// onSelfID, peerID, onCode: see Connect. onProgress: see ProgressFunc.
-	// Blocks until the transfer finishes or fails.
-	Receive func(ctx context.Context, serverAddr, stunAddr, peerID, identityPath, destDir string, onSelfID func(selfID string), onProgress ProgressFunc, onCode OnCodeFunc) error
+	// onResumeOffer: see ResumeOfferFunc. Blocks until the transfer
+	// finishes or fails.
+	Receive func(ctx context.Context, serverAddr, stunAddr, peerID, identityPath, destDir string, onSelfID func(selfID string), onProgress ProgressFunc, onCode OnCodeFunc, onResumeOffer ResumeOfferFunc) error
 }
 
 // OnCodeFunc is called with a freshly minted pairing code when the
@@ -137,14 +138,25 @@ type OnCodeFunc func(code string)
 
 // ProgressFunc reports incremental progress during a file transfer:
 // relPath is the file currently in flight, fileDone/fileTotal describe
-// just that file, overallDone/overallTotal the whole transfer.
-// overallTotal is 0 when unknown (the receiving side never sees the
-// sender's full manifest up front — see usecase.TransferProgress's doc
-// comment for why). This mirrors that usecase-layer type's shape rather
-// than importing it directly, same reason RegisterResult/JoinNetworkResult
-// are cli's own mirror types instead of aliases onto domain/controlclient
-// types — cli must not depend on usecase.
+// just that file, overallDone/overallTotal the whole transfer. Both sides
+// know the real overallTotal from the start of content transfer — the
+// receiver reads the sender's full manifest before any file bytes arrive
+// (see usecase.TransferProgress's doc comment). This mirrors that
+// usecase-layer type's shape rather than importing it directly, same
+// reason RegisterResult/JoinNetworkResult are cli's own mirror types
+// instead of aliases onto domain/controlclient types — cli must not
+// depend on usecase.
 type ProgressFunc func(relPath string, fileDone, fileTotal, overallDone, overallTotal int64)
+
+// ResumeOfferFunc is asked whether to resume a detected partially-complete
+// file transfer instead of starting over: filesWithData is how many
+// entries in the manifest already have some bytes present at the
+// destination, alreadyHave/total describe the combined size across all
+// files. Mirrors usecase.ResumeOffer's shape rather than importing it
+// directly, same reasoning as ProgressFunc/OnCodeFunc. nil is valid and
+// means "always start fresh" — the same behavior as before resume support
+// existed.
+type ResumeOfferFunc func(filesWithData int, alreadyHave, total int64) bool
 
 // ServerDependencies holds the wired entrypoint the server binary's root
 // command calls into.

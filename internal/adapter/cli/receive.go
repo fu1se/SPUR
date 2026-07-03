@@ -24,7 +24,7 @@ func newReceiveCommand(deps ClientDependencies, defaults ClientDefaults) *cobra.
 			}
 			err := deps.Receive(cmd.Context(), serverAddr, stunAddr, peerID, identityPath, outDir, func(selfID string) {
 				cmd.Printf("свой peer-id: %s\n", selfID)
-			}, newProgressPrinter(cmd.ErrOrStderr(), "приём"), newCodePrinter(cmd))
+			}, newProgressPrinter(cmd.ErrOrStderr(), "приём"), newCodePrinter(cmd), newResumePrompt(cmd))
 			progressDone(cmd.ErrOrStderr())
 			return err
 		},

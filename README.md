@@ -256,10 +256,27 @@ spur send --server SERVER:4443 --stun-server SERVER:4444 \
 Both commands exit with code `0` once everything has been transferred
 and acknowledged by the receiving side. Both also print a live-updating
 progress line to stderr while transferring — current file, percentage,
-transfer speed, and overall bytes moved (the sender additionally knows
-and shows an overall percentage; the receiver doesn't know the total
-size of what's coming until it's done, so it only shows a running byte
-count).
+transfer speed, and overall bytes moved. The receiving side reads the
+sender's full file list before any content arrives, so both sides show a
+real overall percentage from the start.
+
+**Resuming an interrupted transfer**: if `receive` is interrupted
+(crash, `Ctrl+C`, lost connection) partway through, just run the same
+`receive`/`send` pair again with the same `--out`. `receive` checks what's
+already on disk and, if it finds a partial file from a previous attempt,
+asks:
+
+```
+Обнаружена незавершённая передача: 1 файл(ов), уже получено 3.0 MiB из 8.0 MiB.
+Продолжить с того места, где остановились? [Y/n]
+```
+
+Answering yes (or just pressing Enter) tells the sender to skip the bytes
+already received and send only the remainder; answering no starts that
+file over from scratch. Either way the result is byte-identical to a
+fresh transfer — declining doesn't trust the existing partial content,
+it's fully overwritten. This is a resume of content, not a resume of the
+session: the P2P/relay handshake still runs again from the start.
 
 ## Config file
 

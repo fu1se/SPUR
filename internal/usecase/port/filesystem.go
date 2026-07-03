@@ -15,7 +15,11 @@ type FileEntry struct {
 // send").
 type FileSource interface {
 	List() ([]FileEntry, error)
-	Open(relPath string) (io.ReadCloser, error)
+	// Open opens relPath for reading, positioned skip bytes into the
+	// file — used to resume a partially-sent file without re-reading (and
+	// re-sending) bytes the receiver already has. skip 0 opens normally
+	// from the start.
+	Open(relPath string, skip int64) (io.ReadCloser, error)
 }
 
 // FileSink writes received files under a destination directory, creating
@@ -24,5 +28,15 @@ type FileSource interface {
 // destination directory (e.g. via "../"): it comes from whatever the
 // counterpart peer sent over the wire, not from a trusted local source.
 type FileSink interface {
-	Create(entry FileEntry) (io.WriteCloser, error)
+	// ExistingSize reports how many bytes are already present at
+	// entry.RelPath under the sink's destination, 0 if the file doesn't
+	// exist yet — used to detect and offer resuming an interrupted
+	// transfer instead of starting over.
+	ExistingSize(relPath string) (int64, error)
+	// Create opens relPath for writing starting at offset: offset 0
+	// truncates and creates fresh; offset > 0 appends starting exactly
+	// there. The caller (usecase.ReceiveFiles) is responsible for offset
+	// matching a size ExistingSize actually reported — Create itself
+	// doesn't re-verify that.
+	Create(entry FileEntry, offset int64) (io.WriteCloser, error)
 }

@@ -44,21 +44,32 @@ func (s *memFileSource) List() ([]port.FileEntry, error) {
 	return entries, nil
 }
 
-func (s *memFileSource) Open(relPath string) (io.ReadCloser, error) {
+func (s *memFileSource) Open(relPath string, skip int64) (io.ReadCloser, error) {
 	content, ok := s.files[relPath]
 	if !ok {
 		return nil, errors.New("memFileSource: no such file")
 	}
-	return io.NopCloser(bytes.NewReader(content)), nil
+	if skip > int64(len(content)) {
+		return nil, errors.New("memFileSource: skip exceeds content length")
+	}
+	return io.NopCloser(bytes.NewReader(content[skip:])), nil
 }
 
-// memFileSink is an in-memory port.FileSink fake.
+// memFileSink is an in-memory port.FileSink fake. Pre-populate files
+// directly to simulate a previous, interrupted transfer's leftovers.
 type memFileSink struct {
+	mu    sync.Mutex
 	files map[string][]byte
 }
 
 func newMemFileSink() *memFileSink {
 	return &memFileSink{files: make(map[string][]byte)}
+}
+
+func (s *memFileSink) ExistingSize(relPath string) (int64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return int64(len(s.files[relPath])), nil
 }
 
 type memWriteCloser struct {
@@ -69,12 +80,24 @@ type memWriteCloser struct {
 
 func (w *memWriteCloser) Write(p []byte) (int, error) { return w.buf.Write(p) }
 func (w *memWriteCloser) Close() error {
+	w.sink.mu.Lock()
+	defer w.sink.mu.Unlock()
 	w.sink.files[w.relPath] = w.buf.Bytes()
 	return nil
 }
 
-func (s *memFileSink) Create(entry port.FileEntry) (io.WriteCloser, error) {
-	return &memWriteCloser{sink: s, relPath: entry.RelPath}, nil
+func (s *memFileSink) Create(entry port.FileEntry, offset int64) (io.WriteCloser, error) {
+	w := &memWriteCloser{sink: s, relPath: entry.RelPath}
+	if offset > 0 {
+		s.mu.Lock()
+		existing := s.files[entry.RelPath]
+		s.mu.Unlock()
+		if int64(len(existing)) < offset {
+			return nil, errors.New("memFileSink: offset exceeds existing content")
+		}
+		w.buf.Write(existing[:offset])
+	}
+	return w, nil
 }
 
 func TestSendReceiveFiles_SingleFileRoundTrip(t *testing.T) {
@@ -143,8 +166,8 @@ func TestSendFiles_SourceListErrorPropagates(t *testing.T) {
 
 type failingSource struct{}
 
-func (failingSource) List() ([]port.FileEntry, error)    { return nil, errors.New("boom") }
-func (failingSource) Open(string) (io.ReadCloser, error) { return nil, errors.New("boom") }
+func (failingSource) List() ([]port.FileEntry, error)           { return nil, errors.New("boom") }
+func (failingSource) Open(string, int64) (io.ReadCloser, error) { return nil, errors.New("boom") }
 
 // progressCall is one recorded invocation of usecase.TransferProgress.
 type progressCall struct {
@@ -175,10 +198,10 @@ func (r *recordingProgress) snapshot() []progressCall {
 
 // TestSendReceiveFiles_ReportsProgress drives a transfer big enough to
 // span several chunks (see usecase.progressChunkSize) and checks both
-// sides' OnProgress callbacks: the sender knows the real overall total up
-// front (Source.List gave it the whole manifest), the receiver never
-// does (see TransferProgress's doc comment for why) and always reports
-// overallTotal 0.
+// sides' OnProgress callbacks. Both sides know the real overall total up
+// front now: the sender from Source.List, and — since the manifest phase
+// added for resume support — the receiver too, from the manifest it reads
+// before any content arrives.
 func TestSendReceiveFiles_ReportsProgress(t *testing.T) {
 	senderConn, receiverConn := net.Pipe()
 	defer senderConn.Close()
@@ -227,5 +250,103 @@ func TestSendReceiveFiles_ReportsProgress(t *testing.T) {
 	require.NotEmpty(t, receiverCalls)
 	rLast := receiverCalls[len(receiverCalls)-1]
 	require.Equal(t, int64(len(big)), rLast.fileDone)
-	require.Equal(t, int64(0), rLast.overallTotal, "receiver never knows the overall total in advance")
+	require.Equal(t, int64(len(big)), rLast.overallTotal, "receiver now knows the overall total from the manifest phase")
+}
+
+// TestSendReceiveFiles_ResumesPartialFile is the core resume behavior at
+// the usecase level: a sink that already has a prefix of the file, with
+// OnResumeOffer accepting, should only receive the missing suffix over
+// the wire and end up byte-identical to the full content.
+func TestSendReceiveFiles_ResumesPartialFile(t *testing.T) {
+	senderConn, receiverConn := net.Pipe()
+	defer senderConn.Close()
+	defer receiverConn.Close()
+
+	full := []byte("0123456789")
+	source := newMemFileSource(map[string][]byte{"a.txt": full}, []string{"a.txt"})
+	sink := newMemFileSink()
+	sink.files["a.txt"] = append([]byte(nil), full[:4]...) // simulates a previous, interrupted attempt
+
+	var offered bool
+	errCh := make(chan error, 2)
+	go func() {
+		errCh <- usecase.SendFiles{Source: source, Tunnel: fakeTunnelConn{stream: senderConn}}.Run(context.Background())
+	}()
+	go func() {
+		errCh <- usecase.ReceiveFiles{
+			Sink:   sink,
+			Tunnel: fakeTunnelConn{stream: receiverConn},
+			OnResumeOffer: func(filesWithData int, alreadyHave, total int64) bool {
+				offered = true
+				require.Equal(t, 1, filesWithData)
+				require.EqualValues(t, 4, alreadyHave)
+				require.EqualValues(t, len(full), total)
+				return true
+			},
+		}.Run(context.Background())
+	}()
+
+	require.NoError(t, <-errCh)
+	require.NoError(t, <-errCh)
+	require.True(t, offered, "OnResumeOffer should have been asked")
+	require.Equal(t, full, sink.files["a.txt"])
+}
+
+// TestSendReceiveFiles_DeclinedResumeStartsFresh checks that saying no to
+// the resume offer still produces a correct, complete file — the sender
+// falls back to sending everything from the start when the receiver's
+// plan says offset 0 for every entry.
+func TestSendReceiveFiles_DeclinedResumeStartsFresh(t *testing.T) {
+	senderConn, receiverConn := net.Pipe()
+	defer senderConn.Close()
+	defer receiverConn.Close()
+
+	full := []byte("0123456789")
+	source := newMemFileSource(map[string][]byte{"a.txt": full}, []string{"a.txt"})
+	sink := newMemFileSink()
+	sink.files["a.txt"] = append([]byte(nil), full[:4]...)
+
+	errCh := make(chan error, 2)
+	go func() {
+		errCh <- usecase.SendFiles{Source: source, Tunnel: fakeTunnelConn{stream: senderConn}}.Run(context.Background())
+	}()
+	go func() {
+		errCh <- usecase.ReceiveFiles{
+			Sink:   sink,
+			Tunnel: fakeTunnelConn{stream: receiverConn},
+			OnResumeOffer: func(int, int64, int64) bool {
+				return false
+			},
+		}.Run(context.Background())
+	}()
+
+	require.NoError(t, <-errCh)
+	require.NoError(t, <-errCh)
+	require.Equal(t, full, sink.files["a.txt"])
+}
+
+// TestSendReceiveFiles_NilResumeOfferAlwaysStartsFresh checks the default
+// (nil OnResumeOffer) behaves like resume support never existed, even
+// when the destination already has partial data sitting around.
+func TestSendReceiveFiles_NilResumeOfferAlwaysStartsFresh(t *testing.T) {
+	senderConn, receiverConn := net.Pipe()
+	defer senderConn.Close()
+	defer receiverConn.Close()
+
+	full := []byte("0123456789")
+	source := newMemFileSource(map[string][]byte{"a.txt": full}, []string{"a.txt"})
+	sink := newMemFileSink()
+	sink.files["a.txt"] = append([]byte(nil), full[:4]...)
+
+	errCh := make(chan error, 2)
+	go func() {
+		errCh <- usecase.SendFiles{Source: source, Tunnel: fakeTunnelConn{stream: senderConn}}.Run(context.Background())
+	}()
+	go func() {
+		errCh <- usecase.ReceiveFiles{Sink: sink, Tunnel: fakeTunnelConn{stream: receiverConn}}.Run(context.Background())
+	}()
+
+	require.NoError(t, <-errCh)
+	require.NoError(t, <-errCh)
+	require.Equal(t, full, sink.files["a.txt"])
 }

@@ -6,15 +6,25 @@ import "io"
 // move bytes, so a caller (the CLI) can render a progress bar and speed
 // without this package knowing anything about terminals. relPath is the
 // file currently in flight; fileDone/fileTotal describe just that file,
-// overallDone/overallTotal the whole transfer. overallTotal is 0 when
-// unknown — ReceiveFiles never sees the sender's full file list up front
-// (the wire protocol streams one header at a time, see
-// file_transfer_wire.go), so it can only report a running overallDone,
-// not a total to measure it against; SendFiles always knows the real
-// total from Source.List(). nil is valid and means "don't report" — same
-// nil-safe-callback pattern as controlserver.Server.Logger elsewhere in
-// this codebase.
+// overallDone/overallTotal the whole transfer. Both sides know the real
+// overallTotal before any content is copied: SendFiles from Source.List(),
+// ReceiveFiles from the manifest phase (see file_transfer_wire.go) it
+// reads before content starts arriving. nil is valid and means "don't
+// report" — same nil-safe-callback pattern as controlserver.Server.Logger
+// elsewhere in this codebase.
 type TransferProgress func(relPath string, fileDone, fileTotal, overallDone, overallTotal int64)
+
+// ResumeOffer is called by ReceiveFiles when the sender's manifest shows
+// at least one file the destination already has some or all bytes of
+// (see port.FileSink.ExistingSize) — filesWithData is how many of those
+// there are, alreadyHave/total are byte counts across the whole
+// transfer. Returning true resumes every such file from where it left
+// off; false (or OnResumeOffer being nil) starts every file fresh,
+// matching pre-resume behavior exactly. Asked once for the whole
+// transfer, not per file — a single interrupted transfer is the
+// expected shape of "why does the destination already have some of
+// this", not an unrelated leftover file for every entry individually.
+type ResumeOffer func(filesWithData int, alreadyHave, total int64) bool
 
 // progressChunkSize bounds how often onChunk fires: io.CopyN's default
 // internal buffer would call the underlying Read/Write in similarly

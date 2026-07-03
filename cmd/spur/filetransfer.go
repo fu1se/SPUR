@@ -40,13 +40,19 @@ func send(ctx context.Context, serverAddr, stunAddr, counterpartID, identityPath
 // receive is "spur receive": accept whatever counterpart streams via
 // "spur send" and write it under destDir, recreating the sender's relative
 // directory structure. counterpartID, onCode: see send. onProgress: see
-// send.
-func receive(ctx context.Context, serverAddr, stunAddr, counterpartID, identityPath, destDir string, onSelfID func(string), onProgress cli.ProgressFunc, onCode cli.OnCodeFunc) error {
+// send. onResumeOffer is forwarded into usecase.ReceiveFiles.OnResumeOffer
+// — see cli.ResumeOfferFunc's doc comment.
+func receive(ctx context.Context, serverAddr, stunAddr, counterpartID, identityPath, destDir string, onSelfID func(string), onProgress cli.ProgressFunc, onCode cli.OnCodeFunc, onResumeOffer cli.ResumeOfferFunc) error {
 	tun, _, _, err := rendezvous(ctx, serverAddr, stunAddr, identityPath, counterpartResolverFor(counterpartID, onCode), onSelfID)
 	if err != nil {
 		return err
 	}
 	defer tun.Close()
 
-	return usecase.ReceiveFiles{Sink: localfs.Sink{DestDir: destDir}, Tunnel: tun.conn, OnProgress: usecase.TransferProgress(onProgress)}.Run(ctx)
+	return usecase.ReceiveFiles{
+		Sink:          localfs.Sink{DestDir: destDir},
+		Tunnel:        tun.conn,
+		OnProgress:    usecase.TransferProgress(onProgress),
+		OnResumeOffer: usecase.ResumeOffer(onResumeOffer),
+	}.Run(ctx)
 }

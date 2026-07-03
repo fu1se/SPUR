@@ -77,7 +77,7 @@ func (s Source) List() ([]port.FileEntry, error) {
 	return entries, nil
 }
 
-func (s Source) Open(relPath string) (io.ReadCloser, error) {
+func (s Source) Open(relPath string, skip int64) (io.ReadCloser, error) {
 	info, err := os.Lstat(s.Path)
 	if err != nil {
 		return nil, fmt.Errorf("localfs: stat %s: %w", s.Path, err)
@@ -99,6 +99,12 @@ func (s Source) Open(relPath string) (io.ReadCloser, error) {
 	if err != nil {
 		return nil, fmt.Errorf("localfs: open %s: %w", target, err)
 	}
+	if skip > 0 {
+		if _, err := f.Seek(skip, io.SeekStart); err != nil {
+			f.Close()
+			return nil, fmt.Errorf("localfs: seek %s to %d: %w", target, skip, err)
+		}
+	}
 	return f, nil
 }
 
@@ -107,7 +113,26 @@ type Sink struct {
 	DestDir string
 }
 
-func (s Sink) Create(entry port.FileEntry) (io.WriteCloser, error) {
+// ExistingSize reports how many bytes are already present at relPath
+// under DestDir, 0 if the file doesn't exist yet — used to detect and
+// offer resuming an interrupted transfer instead of starting over.
+func (s Sink) ExistingSize(relPath string) (int64, error) {
+	safeRel, err := sanitizeRelPath(relPath)
+	if err != nil {
+		return 0, err
+	}
+
+	info, err := os.Stat(filepath.Join(s.DestDir, safeRel))
+	if os.IsNotExist(err) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("localfs: stat %s: %w", relPath, err)
+	}
+	return info.Size(), nil
+}
+
+func (s Sink) Create(entry port.FileEntry, offset int64) (io.WriteCloser, error) {
 	safeRel, err := sanitizeRelPath(entry.RelPath)
 	if err != nil {
 		return nil, err
@@ -123,9 +148,34 @@ func (s Sink) Create(entry port.FileEntry) (io.WriteCloser, error) {
 		return nil, err
 	}
 
-	f, err := os.Create(full)
+	if offset == 0 {
+		f, err := os.Create(full)
+		if err != nil {
+			return nil, fmt.Errorf("localfs: create %s: %w", full, err)
+		}
+		return f, nil
+	}
+
+	// Resuming: the file must already exist with exactly offset bytes —
+	// see port.FileSink.Create's doc comment on whose job it is to have
+	// checked that (usecase.ReceiveFiles, via ExistingSize). Verified
+	// again here rather than trusted blindly: a mismatch would otherwise
+	// either silently skip real content (opening past the true end,
+	// leaving a gap) or overwrite bytes that were supposed to be kept
+	// (opening before it).
+	if info, err := os.Stat(full); err != nil {
+		return nil, fmt.Errorf("localfs: stat %s before resuming: %w", full, err)
+	} else if info.Size() != offset {
+		return nil, fmt.Errorf("localfs: resume offset %d for %s doesn't match actual size %d on disk", offset, full, info.Size())
+	}
+
+	f, err := os.OpenFile(full, os.O_WRONLY, 0o644)
 	if err != nil {
-		return nil, fmt.Errorf("localfs: create %s: %w", full, err)
+		return nil, fmt.Errorf("localfs: open %s for resume: %w", full, err)
+	}
+	if _, err := f.Seek(offset, io.SeekStart); err != nil {
+		f.Close()
+		return nil, fmt.Errorf("localfs: seek %s to %d: %w", full, offset, err)
 	}
 	return f, nil
 }

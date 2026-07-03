@@ -46,7 +46,7 @@ func TestSource_OpenReadsContent(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "a.txt"), []byte("hello"), 0o644))
 
 	src := localfs.Source{Path: dir}
-	r, err := src.Open("a.txt")
+	r, err := src.Open("a.txt", 0)
 	require.NoError(t, err)
 	defer r.Close()
 
@@ -59,7 +59,7 @@ func TestSink_CreateRecreatesDirectoryStructure(t *testing.T) {
 	dir := t.TempDir()
 	sink := localfs.Sink{DestDir: dir}
 
-	w, err := sink.Create(port.FileEntry{RelPath: "sub/nested/a.txt", Size: 5})
+	w, err := sink.Create(port.FileEntry{RelPath: "sub/nested/a.txt", Size: 5}, 0)
 	require.NoError(t, err)
 	_, err = w.Write([]byte("hello"))
 	require.NoError(t, err)
@@ -85,7 +85,7 @@ func TestSink_RejectsPathTraversal(t *testing.T) {
 		"/absolute/path.txt",
 		"",
 	} {
-		_, err := sink.Create(port.FileEntry{RelPath: relPath})
+		_, err := sink.Create(port.FileEntry{RelPath: relPath}, 0)
 		require.Error(t, err, "expected %q to be rejected", relPath)
 	}
 
@@ -147,9 +147,75 @@ func TestSink_RejectsSymlinkEscape(t *testing.T) {
 	require.NoError(t, os.Symlink(outsideDir, filepath.Join(dir, "sub")))
 
 	sink := localfs.Sink{DestDir: dir}
-	_, err := sink.Create(port.FileEntry{RelPath: "sub/evil.txt", Size: 4})
+	_, err := sink.Create(port.FileEntry{RelPath: "sub/evil.txt", Size: 4}, 0)
 	require.Error(t, err)
 
 	_, statErr := os.Stat(filepath.Join(outsideDir, "evil.txt"))
 	require.True(t, os.IsNotExist(statErr), "file must not have been written outside DestDir")
+}
+
+func TestSource_OpenWithSkipSeeksPastThatManyBytes(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "a.txt"), []byte("0123456789"), 0o644))
+
+	src := localfs.Source{Path: dir}
+	r, err := src.Open("a.txt", 4)
+	require.NoError(t, err)
+	defer r.Close()
+
+	content, err := io.ReadAll(r)
+	require.NoError(t, err)
+	require.Equal(t, "456789", string(content))
+}
+
+func TestSink_ExistingSizeReportsZeroForMissingFile(t *testing.T) {
+	dir := t.TempDir()
+	sink := localfs.Sink{DestDir: dir}
+
+	size, err := sink.ExistingSize("nope.txt")
+	require.NoError(t, err)
+	require.Zero(t, size)
+}
+
+func TestSink_ExistingSizeReportsRealSize(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "a.txt"), []byte("hello"), 0o644))
+	sink := localfs.Sink{DestDir: dir}
+
+	size, err := sink.ExistingSize("a.txt")
+	require.NoError(t, err)
+	require.EqualValues(t, 5, size)
+}
+
+// TestSink_CreateWithOffsetAppends is the core resume behavior: writing
+// through a non-zero offset must extend the existing content, not
+// truncate and start over.
+func TestSink_CreateWithOffsetAppends(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "a.txt"), []byte("hello "), 0o644))
+	sink := localfs.Sink{DestDir: dir}
+
+	w, err := sink.Create(port.FileEntry{RelPath: "a.txt", Size: 11}, 6)
+	require.NoError(t, err)
+	_, err = w.Write([]byte("world"))
+	require.NoError(t, err)
+	require.NoError(t, w.Close())
+
+	content, err := os.ReadFile(filepath.Join(dir, "a.txt"))
+	require.NoError(t, err)
+	require.Equal(t, "hello world", string(content))
+}
+
+// TestSink_CreateWithOffsetMismatchFails guards against the caller (or a
+// concurrently modified destination file) claiming a resume offset that
+// doesn't actually match what's on disk -- writing at the wrong offset
+// would either skip real content or silently overwrite bytes meant to be
+// kept.
+func TestSink_CreateWithOffsetMismatchFails(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "a.txt"), []byte("hello"), 0o644))
+	sink := localfs.Sink{DestDir: dir}
+
+	_, err := sink.Create(port.FileEntry{RelPath: "a.txt", Size: 100}, 999)
+	require.Error(t, err)
 }
