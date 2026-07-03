@@ -15,7 +15,8 @@ help:
 	@echo "  fmt      - gofmt -w every .go file"
 	@echo "  proto    - regenerate internal/adapter/controlproto from proto/control/v1/control.proto"
 	@echo "  release  - cross-compile release binaries into ./$(DIST_DIR) for: $(RELEASE_PLATFORMS)"
-	@echo "  clean    - remove $(BIN_DIR) and $(DIST_DIR)"
+	@echo "  mobile-aar - gomobile bind android/spurmobile into android/app/libs/spurmobile.aar"
+	@echo "  clean    - remove $(BIN_DIR), $(DIST_DIR) and the built .aar"
 
 .PHONY: build
 build:
@@ -62,6 +63,14 @@ release: clean
 			-o $(DIST_DIR)/spur-server-$(GOOS)-$(GOARCH)$(EXT) ./cmd/spur-server || exit 1; \
 	)
 
+.PHONY: mobile-aar
+mobile-aar:
+	mkdir -p android/app/libs
+	gomobile bind -androidapi 26 -target=android \
+		-ldflags "-X '$(MODULE)/android/spurmobile.version=$(VERSION)'" \
+		-o android/app/libs/spurmobile.aar \
+		./android/spurmobile
+
 .PHONY: clean
 clean:
-	rm -rf $(BIN_DIR) $(DIST_DIR)
+	rm -rf $(BIN_DIR) $(DIST_DIR) android/app/libs/spurmobile.aar
