@@ -113,7 +113,7 @@ func register(ctx context.Context, serverAddr string, onVersionMismatch cli.Vers
 		return cli.RegisterResult{}, fmt.Errorf("app: generate ephemeral key: %w", err)
 	}
 
-	tlsConf, err := rendezvous.ControlClientTLS(serverAddr)
+	tlsConf, err := rendezvous.ControlClientTLS(serverAddr, "")
 	if err != nil {
 		return cli.RegisterResult{}, err
 	}
@@ -155,7 +155,7 @@ func whoami(identityPath string) (string, error) {
 // network on the server, returning its current membership. Control-plane
 // only — see cli.ClientDependencies.JoinNetwork's doc comment.
 func joinNetwork(ctx context.Context, serverAddr, networkName, inviteToken, identityPath string, onVersionMismatch cli.VersionMismatchFunc) (cli.JoinNetworkResult, error) {
-	client, id, err := rendezvous.DialAndRegister(ctx, serverAddr, identityPath, cli.Version(), rendezvous.VersionMismatchFunc(onVersionMismatch))
+	client, id, err := rendezvous.DialAndRegister(ctx, serverAddr, identityPath, "", cli.Version(), rendezvous.VersionMismatchFunc(onVersionMismatch))
 	if err != nil {
 		return cli.JoinNetworkResult{}, err
 	}

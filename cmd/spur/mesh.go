@@ -58,7 +58,7 @@ func join(ctx context.Context, serverAddr, stunAddr, networkName, inviteToken, i
 	self := domain.DerivePeerID(id.PublicKey)
 	onSelfID(string(self))
 
-	controlTLSConf, err := rendezvous.ControlClientTLS(serverAddr)
+	controlTLSConf, err := rendezvous.ControlClientTLS(serverAddr, "")
 	if err != nil {
 		return err
 	}
@@ -206,7 +206,7 @@ func (m *meshPeers) reapDeadConnection(peer domain.PeerID) bool {
 
 func (m *meshPeers) connectOne(ctx context.Context, mem domain.MeshMember) {
 	resolve := rendezvous.FixedCounterpart(mem.PeerID)
-	tun, _, _, err := rendezvous.Establish(ctx, m.serverAddr, m.stunAddr, m.identityPath, cli.Version(), resolve, func(string) {}, nil)
+	tun, _, _, err := rendezvous.Establish(ctx, m.serverAddr, m.stunAddr, m.identityPath, "", cli.Version(), resolve, func(string) {}, nil)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "spur: mesh: rendezvous with %s failed: %v\n", mem.PeerID, err)
 		return

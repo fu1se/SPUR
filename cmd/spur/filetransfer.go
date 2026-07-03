@@ -32,7 +32,7 @@ func send(ctx context.Context, serverAddr, stunAddr, counterpartID, roomName, id
 	}
 
 	resolve := rendezvous.CounterpartResolverFor(counterpartID, roomName, rendezvous.OnCodeFunc(onCode))
-	tun, _, _, err := rendezvous.Establish(ctx, serverAddr, stunAddr, identityPath, cli.Version(), resolve, onSelfID, rendezvous.VersionMismatchFunc(onVersionMismatch))
+	tun, _, _, err := rendezvous.Establish(ctx, serverAddr, stunAddr, identityPath, "", cli.Version(), resolve, onSelfID, rendezvous.VersionMismatchFunc(onVersionMismatch))
 	if err != nil {
 		return err
 	}
@@ -49,7 +49,7 @@ func send(ctx context.Context, serverAddr, stunAddr, counterpartID, roomName, id
 // comment.
 func receive(ctx context.Context, serverAddr, stunAddr, counterpartID, roomName, identityPath, destDir string, onSelfID func(string), onProgress cli.ProgressFunc, onCode cli.OnCodeFunc, onResumeOffer cli.ResumeOfferFunc, onVersionMismatch cli.VersionMismatchFunc) error {
 	resolve := rendezvous.CounterpartResolverFor(counterpartID, roomName, rendezvous.OnCodeFunc(onCode))
-	tun, _, _, err := rendezvous.Establish(ctx, serverAddr, stunAddr, identityPath, cli.Version(), resolve, onSelfID, rendezvous.VersionMismatchFunc(onVersionMismatch))
+	tun, _, _, err := rendezvous.Establish(ctx, serverAddr, stunAddr, identityPath, "", cli.Version(), resolve, onSelfID, rendezvous.VersionMismatchFunc(onVersionMismatch))
 	if err != nil {
 		return err
 	}

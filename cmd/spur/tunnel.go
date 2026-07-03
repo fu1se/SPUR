@@ -20,7 +20,7 @@ import (
 // aren't both set.
 func connect(ctx context.Context, serverAddr, stunAddr, counterpartID, roomName, identityPath string, localPort int, onSelfID func(string), onCode cli.OnCodeFunc, onVersionMismatch cli.VersionMismatchFunc) error {
 	resolve := rendezvous.CounterpartResolverFor(counterpartID, roomName, rendezvous.OnCodeFunc(onCode))
-	tun, _, _, err := rendezvous.Establish(ctx, serverAddr, stunAddr, identityPath, cli.Version(), resolve, onSelfID, rendezvous.VersionMismatchFunc(onVersionMismatch))
+	tun, _, _, err := rendezvous.Establish(ctx, serverAddr, stunAddr, identityPath, "", cli.Version(), resolve, onSelfID, rendezvous.VersionMismatchFunc(onVersionMismatch))
 	if err != nil {
 		return err
 	}
@@ -40,7 +40,7 @@ func connect(ctx context.Context, serverAddr, stunAddr, counterpartID, roomName,
 // roomName: see connect.
 func expose(ctx context.Context, serverAddr, stunAddr, counterpartID, roomName, identityPath string, targetPort int, onSelfID func(string), onCode cli.OnCodeFunc, onVersionMismatch cli.VersionMismatchFunc) error {
 	resolve := rendezvous.CounterpartResolverFor(counterpartID, roomName, rendezvous.OnCodeFunc(onCode))
-	tun, _, _, err := rendezvous.Establish(ctx, serverAddr, stunAddr, identityPath, cli.Version(), resolve, onSelfID, rendezvous.VersionMismatchFunc(onVersionMismatch))
+	tun, _, _, err := rendezvous.Establish(ctx, serverAddr, stunAddr, identityPath, "", cli.Version(), resolve, onSelfID, rendezvous.VersionMismatchFunc(onVersionMismatch))
 	if err != nil {
 		return err
 	}

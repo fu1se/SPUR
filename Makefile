@@ -67,7 +67,7 @@ release: clean
 mobile-aar:
 	mkdir -p android/app/libs
 	gomobile bind -androidapi 26 -target=android \
-		-ldflags "-X '$(MODULE)/android/spurmobile.version=$(VERSION)'" \
+		-ldflags "-checklinkname=0 -X '$(MODULE)/android/spurmobile.version=$(VERSION)'" \
 		-o android/app/libs/spurmobile.aar \
 		./android/spurmobile
 

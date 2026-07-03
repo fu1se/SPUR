@@ -74,13 +74,24 @@ func ResolveIdentityPath(identityPath string) (string, error) {
 
 // ControlClientTLS builds the TLS config for dialing a control-plane
 // server at serverAddr: trust-on-first-use pinning
-// (infra.TOFUClientTLSConfig) against the default trust store, replacing
-// blind InsecureSkipVerify trust. See infra/tofu.go's doc comment for
-// what this does and doesn't protect against.
-func ControlClientTLS(serverAddr string) (*tls.Config, error) {
-	trustStorePath, err := infra.DefaultTrustStorePath()
-	if err != nil {
-		return nil, err
+// (infra.TOFUClientTLSConfig) against trustStorePath (falling back to
+// infra.DefaultTrustStorePath when empty — the desktop CLI's
+// --identity-less callers all pass "" and get the exact same
+// ~/.config/spur/known_servers.json as before), replacing blind
+// InsecureSkipVerify trust. See infra/tofu.go's doc comment for what
+// this does and doesn't protect against.
+//
+// The explicit-path parameter exists for the Android facade
+// (android/spurmobile): os.UserConfigDir() doesn't resolve to anything
+// writable inside an Android app's sandbox, so that caller always passes
+// its own app-private directory instead of "".
+func ControlClientTLS(serverAddr, trustStorePath string) (*tls.Config, error) {
+	if trustStorePath == "" {
+		var err error
+		trustStorePath, err = infra.DefaultTrustStorePath()
+		if err != nil {
+			return nil, err
+		}
 	}
 	return infra.TOFUClientTLSConfig(trustStorePath, serverAddr, controlproto.ALPN), nil
 }
@@ -109,8 +120,9 @@ func WarnIfVersionMismatch(clientVersion, serverVersion string, onMismatch Versi
 // serverAddr over a TOFU-pinned control-plane TLS connection, and
 // registers it — the common prefix shared by Establish below and every
 // other control-plane-only operation (join-network, room create/join).
-// The caller owns closing the returned client.
-func DialAndRegister(ctx context.Context, serverAddr, identityPath, clientVersion string, onVersionMismatch VersionMismatchFunc) (*controlclient.Client, infra.Identity, error) {
+// The caller owns closing the returned client. trustStorePath: see
+// ControlClientTLS.
+func DialAndRegister(ctx context.Context, serverAddr, identityPath, trustStorePath, clientVersion string, onVersionMismatch VersionMismatchFunc) (*controlclient.Client, infra.Identity, error) {
 	resolvedIdentityPath, err := ResolveIdentityPath(identityPath)
 	if err != nil {
 		return nil, infra.Identity{}, err
@@ -120,7 +132,7 @@ func DialAndRegister(ctx context.Context, serverAddr, identityPath, clientVersio
 		return nil, infra.Identity{}, fmt.Errorf("app: load identity: %w", err)
 	}
 
-	tlsConf, err := ControlClientTLS(serverAddr)
+	tlsConf, err := ControlClientTLS(serverAddr, trustStorePath)
 	if err != nil {
 		return nil, infra.Identity{}, err
 	}
@@ -153,7 +165,8 @@ func DialAndRegister(ctx context.Context, serverAddr, identityPath, clientVersio
 // there's still a "which peer is this" concept worth surfacing early for
 // diagnostics/scripting — the persisted identity (see
 // infra.LoadOrCreateIdentity) means it's unchanged run to run.
-func Establish(ctx context.Context, serverAddr, stunAddr, identityPath, clientVersion string, resolve CounterpartResolver, onSelfID func(string), onVersionMismatch VersionMismatchFunc) (tun *Tunnel, self domain.PeerID, counterpart domain.PeerID, err error) {
+// trustStorePath: see ControlClientTLS.
+func Establish(ctx context.Context, serverAddr, stunAddr, identityPath, trustStorePath, clientVersion string, resolve CounterpartResolver, onSelfID func(string), onVersionMismatch VersionMismatchFunc) (tun *Tunnel, self domain.PeerID, counterpart domain.PeerID, err error) {
 	resolvedIdentityPath, err := ResolveIdentityPath(identityPath)
 	if err != nil {
 		return nil, "", "", err
@@ -164,7 +177,7 @@ func Establish(ctx context.Context, serverAddr, stunAddr, identityPath, clientVe
 	}
 	self = domain.DerivePeerID(id.PublicKey)
 
-	controlTLSConf, err := ControlClientTLS(serverAddr)
+	controlTLSConf, err := ControlClientTLS(serverAddr, trustStorePath)
 	if err != nil {
 		return nil, "", "", err
 	}
