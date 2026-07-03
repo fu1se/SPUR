@@ -82,9 +82,17 @@ func (t *Transport) establishQUIC(ctx context.Context, session domain.Session, i
 // default (a different, unformatted style from the rest of this
 // codebase's output) and every failure here already surfaces properly as
 // a returned error from the affected Read/Write call.
+//
+// 60s turned out to still be too tight: users kept hitting the same
+// keepalive-timeout drop on long-running relay transfers over slower or
+// less stable links, where a write can legitimately queue behind
+// congestion for minutes, not seconds. Raised to 5 minutes — a truly
+// dead connection is still caught, just with more patience for a merely
+// slow one, which matters far more for a bulk transfer than shaving
+// minutes off detecting a real outage.
 func yamuxConfig() *yamux.Config {
 	cfg := yamux.DefaultConfig()
-	cfg.ConnectionWriteTimeout = 60 * time.Second
+	cfg.ConnectionWriteTimeout = 5 * time.Minute
 	cfg.LogOutput = io.Discard
 	return cfg
 }
