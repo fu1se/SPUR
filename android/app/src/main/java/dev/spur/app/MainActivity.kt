@@ -1,8 +1,11 @@
 package dev.spur.app
 
+import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -21,6 +24,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -28,7 +32,9 @@ import kotlinx.coroutines.withContext
 import spurmobile.Client
 import spurmobile.CodeCallback
 import spurmobile.PortForward
+import spurmobile.ProgressCallback
 import spurmobile.Spurmobile
+import spurmobile.Transfer
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -166,5 +172,116 @@ fun SkeletonScreen(coreVersion: String, client: Client) {
             Text("код для подключения: $pairingCode")
         }
         Text(pfStatus)
+
+        Text("Send / receive")
+        var ftToOrRoom by remember { mutableStateOf("") }
+        var ftIsRoom by remember { mutableStateOf(false) }
+        var sourceUri by remember { mutableStateOf<Uri?>(null) }
+        var destUri by remember { mutableStateOf<Uri?>(null) }
+        var ftStatus by remember { mutableStateOf("остановлено") }
+        var ftCode by remember { mutableStateOf("") }
+        var activeTransfer by remember { mutableStateOf<Transfer?>(null) }
+        val context = LocalContext.current
+
+        val pickSource = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+            if (uri != null) {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                )
+                sourceUri = uri
+            }
+        }
+        val pickDest = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+            if (uri != null) {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+                )
+                destUri = uri
+            }
+        }
+
+        OutlinedTextField(
+            value = ftToOrRoom,
+            onValueChange = { ftToOrRoom = it },
+            label = { Text(if (ftIsRoom) "room" else "to (peer-id/код, пусто — режим хоста)") },
+        )
+        Button(onClick = { ftIsRoom = !ftIsRoom }) {
+            Text(if (ftIsRoom) "режим: room (нажмите для to/код)" else "режим: to/код (нажмите для room)")
+        }
+        val ftTo = if (ftIsRoom) "" else ftToOrRoom
+        val ftRoom = if (ftIsRoom) ftToOrRoom else ""
+        val ftOnCode = CodeCallback { code -> ftCode = code }
+        val onProgress = ProgressCallback { relPath, fileDone, fileTotal, overallDone, overallTotal ->
+            ftStatus = "$relPath: $fileDone/$fileTotal (всего $overallDone/$overallTotal)"
+        }
+
+        Button(onClick = { pickSource.launch(null) }) {
+            Text(if (sourceUri != null) "источник выбран" else "выбрать папку-источник")
+        }
+        Button(onClick = {
+            scope.launch {
+                val uri = sourceUri
+                if (uri == null) {
+                    ftStatus = "сначала выберите папку-источник"
+                    return@launch
+                }
+                ftStatus = "устанавливаем канал..."
+                ftCode = ""
+                try {
+                    val source = SafFileSource(context, uri)
+                    val tr = withContext(Dispatchers.IO) {
+                        client.startSend(serverAddr, stunAddr, ftTo, ftRoom, source, ftOnCode, onProgress)
+                    }
+                    activeTransfer = tr
+                    scope.launch(Dispatchers.IO) {
+                        val err = runCatching { tr.await() }.exceptionOrNull()
+                        ftStatus = if (err != null) "send: ошибка: ${err.message}" else "send: завершено"
+                    }
+                } catch (e: Exception) {
+                    ftStatus = "ошибка: ${e.message}"
+                }
+            }
+        }) {
+            Text("Start send")
+        }
+
+        Button(onClick = { pickDest.launch(null) }) {
+            Text(if (destUri != null) "папка назначения выбрана" else "выбрать папку назначения")
+        }
+        Button(onClick = {
+            scope.launch {
+                val uri = destUri
+                if (uri == null) {
+                    ftStatus = "сначала выберите папку назначения"
+                    return@launch
+                }
+                ftStatus = "устанавливаем канал..."
+                ftCode = ""
+                try {
+                    val sink = SafFileSink(context, uri)
+                    val tr = withContext(Dispatchers.IO) {
+                        client.startReceive(serverAddr, stunAddr, ftTo, ftRoom, sink, ftOnCode, onProgress, null)
+                    }
+                    activeTransfer = tr
+                    scope.launch(Dispatchers.IO) {
+                        val err = runCatching { tr.await() }.exceptionOrNull()
+                        ftStatus = if (err != null) "receive: ошибка: ${err.message}" else "receive: завершено"
+                    }
+                } catch (e: Exception) {
+                    ftStatus = "ошибка: ${e.message}"
+                }
+            }
+        }) {
+            Text("Start receive")
+        }
+        Button(onClick = { activeTransfer?.stop() }) {
+            Text("Stop transfer")
+        }
+        if (ftCode.isNotEmpty()) {
+            Text("код для подключения: $ftCode")
+        }
+        Text(ftStatus)
     }
 }
