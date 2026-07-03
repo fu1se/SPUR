@@ -11,6 +11,7 @@ func newReceiveCommand(deps ClientDependencies, defaults ClientDefaults) *cobra.
 		serverAddr   = defaults.Server
 		stunAddr     = defaults.StunServer
 		peerID       string
+		roomName     string
 		identityPath = defaults.Identity
 		outDir       string
 	)
@@ -22,9 +23,12 @@ func newReceiveCommand(deps ClientDependencies, defaults ClientDefaults) *cobra.
 			if serverAddr == "" || stunAddr == "" || outDir == "" {
 				return errors.New("receive: укажите --server, --stun-server и --out")
 			}
-			err := deps.Receive(cmd.Context(), serverAddr, stunAddr, peerID, identityPath, outDir, func(selfID string) {
+			if peerID != "" && roomName != "" {
+				return errors.New("receive: укажите либо --to, либо --room, не оба сразу")
+			}
+			err := deps.Receive(cmd.Context(), serverAddr, stunAddr, peerID, roomName, identityPath, outDir, func(selfID string) {
 				cmd.Printf("свой peer-id: %s\n", selfID)
-			}, newProgressPrinter(cmd.ErrOrStderr(), "приём"), newCodePrinter(cmd), newResumePrompt(cmd))
+			}, newProgressPrinter(cmd.ErrOrStderr(), "приём"), newCodePrinter(cmd), newResumePrompt(cmd), newVersionWarningPrinter(cmd))
 			progressDone(cmd.ErrOrStderr())
 			return err
 		},
@@ -33,6 +37,7 @@ func newReceiveCommand(deps ClientDependencies, defaults ClientDefaults) *cobra.
 	cmd.Flags().StringVar(&serverAddr, "server", serverAddr, "адрес rendezvous-сервера (control-канал)")
 	cmd.Flags().StringVar(&stunAddr, "stun-server", stunAddr, "адрес STUN-эндпоинта сервера")
 	cmd.Flags().StringVar(&peerID, "to", "", pairingToFlagHelp("пира, которому разрешено отправлять файлы"))
+	cmd.Flags().StringVar(&roomName, "room", "", roomToFlagHelp("пиром, которому разрешено отправлять файлы"))
 	cmd.Flags().StringVar(&identityPath, "identity", identityPath, "путь к файлу идентичности (по умолчанию — в конфиг-директории пользователя)")
 	cmd.Flags().StringVar(&outDir, "out", "", "директория, куда сохранять принятые файлы")
 

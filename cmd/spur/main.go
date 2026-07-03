@@ -48,6 +48,8 @@ func main() {
 		Join:        join,
 		Send:        send,
 		Receive:     receive,
+		CreateRoom:  createRoom,
+		JoinRoom:    joinRoom,
 	}, defaults)
 
 	if err := root.ExecuteContext(ctx); err != nil {
@@ -79,7 +81,7 @@ func loadDefaults() (cli.ClientDefaults, error) {
 // persistent keypairs land in Phase 7 (see CLAUDE.md roadmap); for now a
 // fresh random key is generated on every call, which is enough to exercise
 // the control-plane wire protocol end to end.
-func register(ctx context.Context, serverAddr string) (cli.RegisterResult, error) {
+func register(ctx context.Context, serverAddr string, onVersionMismatch cli.VersionMismatchFunc) (cli.RegisterResult, error) {
 	var pub domain.PublicKey
 	if _, err := rand.Read(pub[:]); err != nil {
 		return cli.RegisterResult{}, fmt.Errorf("app: generate ephemeral key: %w", err)
@@ -96,10 +98,11 @@ func register(ctx context.Context, serverAddr string) (cli.RegisterResult, error
 	}
 	defer client.Close()
 
-	result, err := client.Register(ctx, pub)
+	result, err := client.Register(ctx, pub, cli.Version())
 	if err != nil {
 		return cli.RegisterResult{}, err
 	}
+	warnIfVersionMismatch(cli.Version(), result.ServerVersion, onVersionMismatch)
 
 	return cli.RegisterResult{
 		PeerID:          string(result.PeerID),
@@ -125,7 +128,7 @@ func whoami(identityPath string) (string, error) {
 // joinNetwork loads (or creates) the local identity and joins a mesh
 // network on the server, returning its current membership. Control-plane
 // only — see cli.ClientDependencies.JoinNetwork's doc comment.
-func joinNetwork(ctx context.Context, serverAddr, networkName, inviteToken, identityPath string) (cli.JoinNetworkResult, error) {
+func joinNetwork(ctx context.Context, serverAddr, networkName, inviteToken, identityPath string, onVersionMismatch cli.VersionMismatchFunc) (cli.JoinNetworkResult, error) {
 	resolvedIdentityPath, err := resolveIdentityPath(identityPath)
 	if err != nil {
 		return cli.JoinNetworkResult{}, err
@@ -145,6 +148,12 @@ func joinNetwork(ctx context.Context, serverAddr, networkName, inviteToken, iden
 		return cli.JoinNetworkResult{}, err
 	}
 	defer client.Close()
+
+	regResult, err := client.Register(ctx, id.PublicKey, cli.Version())
+	if err != nil {
+		return cli.JoinNetworkResult{}, err
+	}
+	warnIfVersionMismatch(cli.Version(), regResult.ServerVersion, onVersionMismatch)
 
 	network, err := client.JoinNetwork(ctx, networkName, inviteToken, id.PublicKey)
 	if err != nil {

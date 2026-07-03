@@ -52,6 +52,17 @@ type Server struct {
 	RegisterPairingCode usecase.RegisterPairingCode
 	ResolvePairingCode  usecase.ResolvePairingCode
 	AwaitPairingCodeUse usecase.AwaitPairingCodeUse
+	CreateRoom          usecase.CreateRoom
+	JoinRoom            usecase.JoinRoom
+	ResolveRoom         usecase.ResolveRoom
+
+	// Version is this server's own build version, echoed back in every
+	// RegisterResponse so a client can compare it against its own and
+	// warn about a skew — see cli.Version(). Empty is valid (every
+	// existing test's &Server{...} literal doesn't set it) and just
+	// means the response carries an empty server_version, which clients
+	// treat as "nothing to compare against."
+	Version string
 
 	// Logger receives operational events (connections, per-RPC errors).
 	// Every request handler used to drop its errors silently — an
@@ -175,6 +186,12 @@ func (s *Server) handleStream(ctx context.Context, conn *quic.Conn, stream *quic
 		s.handleResolvePairingCode(reqCtx, stream)
 	case controlproto.MethodAwaitPairingCodeUse:
 		s.handleAwaitPairingCodeUse(reqCtx, stream)
+	case controlproto.MethodCreateRoom:
+		s.handleCreateRoom(reqCtx, stream)
+	case controlproto.MethodJoinRoom:
+		s.handleJoinRoom(reqCtx, stream)
+	case controlproto.MethodResolveRoom:
+		s.handleResolveRoom(reqCtx, stream)
 	default:
 		s.log().Warn().Str("remote", conn.RemoteAddr().String()).Interface("method", method).Msg("unknown method")
 	}

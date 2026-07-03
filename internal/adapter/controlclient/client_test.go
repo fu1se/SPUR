@@ -26,7 +26,7 @@ func TestRegister_EndToEnd(t *testing.T) {
 	require.NoError(t, err)
 
 	peers := memory.NewPeerRepository()
-	srv := &controlserver.Server{RegisterPeer: usecase.RegisterPeer{Peers: peers}}
+	srv := &controlserver.Server{RegisterPeer: usecase.RegisterPeer{Peers: peers}, Version: "v1.2.3"}
 
 	conn, err := net.ListenPacket("udp", "127.0.0.1:0")
 	require.NoError(t, err)
@@ -43,11 +43,12 @@ func TestRegister_EndToEnd(t *testing.T) {
 	require.NoError(t, err)
 	defer client.Close()
 
-	result, err := client.Register(ctx, pub)
+	result, err := client.Register(ctx, pub, "v9.9.9")
 	require.NoError(t, err)
 
 	require.Equal(t, domain.DerivePeerID(pub), result.PeerID)
 	require.Contains(t, result.ObservedAddress, "127.0.0.1:")
+	require.Equal(t, "v1.2.3", result.ServerVersion)
 
 	stored, err := peers.FindByID(ctx, result.PeerID)
 	require.NoError(t, err)

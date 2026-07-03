@@ -24,7 +24,7 @@ func newJoinCommand(deps ClientDependencies, defaults ClientDefaults) *cobra.Com
 			}
 			return deps.Join(cmd.Context(), serverAddr, stunAddr, network, inviteToken, identityPath, func(selfID string) {
 				cmd.Printf("свой peer-id: %s\n", selfID)
-			})
+			}, newVersionWarningPrinter(cmd))
 		},
 	}
 

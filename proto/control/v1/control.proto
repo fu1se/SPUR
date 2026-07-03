@@ -8,6 +8,12 @@ option go_package = "github.com/fu1se/spur/internal/adapter/controlproto";
 // handshake completes, to announce its identity to the rendezvous server.
 message RegisterRequest {
   bytes public_key = 1; // 32 bytes, Curve25519/WireGuard-compatible
+  string client_version = 2; // this client's build version (cli.Version()),
+                              // "dev" for unreleased/local builds. Purely
+                              // informational — lets the server's response
+                              // carry its own version back so the client can
+                              // warn about a version skew; the server never
+                              // rejects a request based on this field.
 }
 
 // RegisterResponse tells the client how the server sees it, i.e. its
@@ -15,6 +21,9 @@ message RegisterRequest {
 message RegisterResponse {
   string peer_id = 1;
   string observed_address = 2; // host:port as seen by the server
+  string server_version = 3; // the server's own build version, so the
+                              // client can compare against its own and warn
+                              // if they differ — see RegisterRequest.client_version
 }
 
 // Candidate mirrors domain.Candidate on the wire.
@@ -130,4 +139,56 @@ message AwaitPairingCodeUseRequest {
 
 message AwaitPairingCodeUseResponse {
   string peer_id = 1; // the peer ID of whoever resolved the code
+}
+
+// CreateRoomRequest asks the server to create a brand-new, persistent
+// room named room_name with the caller as its first (of exactly two)
+// member — unlike a pairing code (single-use, expires in minutes) or a
+// mesh network (many members, TUN/WireGuard), a room is a long-lived
+// pairing between two specific, already-known people who don't want to
+// re-exchange a peer ID or code every time they connect. Fails if the
+// name is already taken.
+message CreateRoomRequest {
+  string room_name = 1;
+  bytes public_key = 2;
+}
+
+message CreateRoomResponse {
+  string invite_token = 1; // share with the second participant, who
+                            // presents it once in JoinRoomRequest
+  string error = 2; // non-empty means creation was rejected (e.g. the
+                     // name is already taken) — invite_token is
+                     // meaningless when this is set
+}
+
+// JoinRoomRequest asks the server to add the caller as the room's second
+// member. invite_token must match what CreateRoom returned, unless the
+// caller is already a member (idempotent rejoin, same convention as
+// JoinNetworkRequest).
+message JoinRoomRequest {
+  string room_name = 1;
+  bytes public_key = 2;
+  string invite_token = 3;
+}
+
+message JoinRoomResponse {
+  string error = 1; // non-empty means the join was rejected (room
+                     // doesn't exist, already has two other members, or
+                     // invite_token is wrong)
+}
+
+// ResolveRoomRequest asks the server who the caller's counterpart is in
+// an already-full room — used by connect/expose/send/receive's --room
+// flag as an alternative to a peer ID or pairing code.
+message ResolveRoomRequest {
+  string room_name = 1;
+  bytes public_key = 2;
+}
+
+message ResolveRoomResponse {
+  string peer_id = 1; // the other member's peer ID
+  string error = 2; // non-empty means resolution failed (room doesn't
+                     // exist, caller isn't a member, or the second
+                     // participant hasn't joined yet) — peer_id is
+                     // meaningless when this is set
 }

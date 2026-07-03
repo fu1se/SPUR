@@ -24,6 +24,15 @@ import (
 // version is set at build time via -ldflags "-X ... version=...".
 var version = "dev"
 
+// Version returns this binary's own build version — the same string
+// `spur version`/`spur-server version` print. Exported so cmd/spur can
+// pass it into control-plane RPCs (Register's client_version) and
+// cmd/spur-server can pass it into controlserver.Server.Version, without
+// either composition root reaching into this package's unexported state.
+func Version() string {
+	return version
+}
+
 // ClientDefaults holds fallback values for client flags a user would
 // otherwise have to retype on every invocation (--server, --stun-server,
 // --identity). Loaded from a config file in cmd/spur (an infra concern —
@@ -69,25 +78,31 @@ type JoinNetworkResult struct {
 // what concrete adapters sit behind them.
 type ClientDependencies struct {
 	// Register dials a control-plane server and registers an (ephemeral,
-	// until Phase 7) identity with it.
-	Register func(ctx context.Context, serverAddr string) (RegisterResult, error)
+	// until Phase 7) identity with it. onVersionMismatch: see
+	// VersionMismatchFunc.
+	Register func(ctx context.Context, serverAddr string, onVersionMismatch VersionMismatchFunc) (RegisterResult, error)
 
-	// Connect is "spur connect": rendezvous with peerID, establish a P2P or
-	// relay session, and forward every connection to localPort through it.
-	// identityPath is where the caller's persisted identity lives (see
-	// infra.LoadOrCreateIdentity — without persistence across restarts,
-	// the two ends could never learn each other's ID before it changed
-	// again). onSelfID is called with the caller's own peer ID as soon as
-	// it's known, before Connect starts blocking. peerID may be empty —
-	// see OnCodeFunc for what that means. Blocks until ctx is cancelled
-	// or forwarding fails.
-	Connect func(ctx context.Context, serverAddr, stunAddr, peerID, identityPath string, localPort int, onSelfID func(selfID string), onCode OnCodeFunc) error
+	// Connect is "spur connect": rendezvous with a counterpart, establish
+	// a P2P or relay session, and forward every connection to localPort
+	// through it. identityPath is where the caller's persisted identity
+	// lives (see infra.LoadOrCreateIdentity — without persistence across
+	// restarts, the two ends could never learn each other's ID before it
+	// changed again). onSelfID is called with the caller's own peer ID as
+	// soon as it's known, before Connect starts blocking. The counterpart
+	// is chosen by exactly one of: peerID (may be empty — see OnCodeFunc
+	// for what that means), or roomName (see CreateRoom/JoinRoom — takes
+	// priority over peerID when both are somehow set, though the CLI
+	// layer rejects that combination before it gets here). onVersionMismatch:
+	// see VersionMismatchFunc. Blocks until ctx is cancelled or
+	// forwarding fails.
+	Connect func(ctx context.Context, serverAddr, stunAddr, peerID, roomName, identityPath string, localPort int, onSelfID func(selfID string), onCode OnCodeFunc, onVersionMismatch VersionMismatchFunc) error
 
-	// Expose is "spur expose": rendezvous with peerID, establish a P2P or
-	// relay session, and dial targetPort locally for every incoming
-	// tunnel stream. identityPath, onSelfID, peerID, onCode: see Connect.
-	// Blocks until ctx is cancelled or serving fails.
-	Expose func(ctx context.Context, serverAddr, stunAddr, peerID, identityPath string, targetPort int, onSelfID func(selfID string), onCode OnCodeFunc) error
+	// Expose is "spur expose": rendezvous with a counterpart, establish a
+	// P2P or relay session, and dial targetPort locally for every
+	// incoming tunnel stream. identityPath, onSelfID, peerID, roomName,
+	// onCode, onVersionMismatch: see Connect. Blocks until ctx is
+	// cancelled or serving fails.
+	Expose func(ctx context.Context, serverAddr, stunAddr, peerID, roomName, identityPath string, targetPort int, onSelfID func(selfID string), onCode OnCodeFunc, onVersionMismatch VersionMismatchFunc) error
 
 	// Whoami loads (or creates) the local identity and returns its peer
 	// ID, without any network access — the bootstrap step for learning
@@ -99,30 +114,55 @@ type ClientDependencies struct {
 	// "validate the control-plane piece in isolation" pattern as Register
 	// did for Phase 2. inviteToken is required to join a network that
 	// already exists (irrelevant when creating a new one or rejoining a
-	// network the caller is already a member of).
-	JoinNetwork func(ctx context.Context, serverAddr, networkName, inviteToken, identityPath string) (JoinNetworkResult, error)
+	// network the caller is already a member of). onVersionMismatch: see
+	// VersionMismatchFunc.
+	JoinNetwork func(ctx context.Context, serverAddr, networkName, inviteToken, identityPath string, onVersionMismatch VersionMismatchFunc) (JoinNetworkResult, error)
 
 	// Join is "spur join": full mesh VPN mode — join the network, tunnel
 	// to every other member, and route traffic through a real TUN
 	// interface. Requires elevated privileges (root/CAP_NET_ADMIN on
-	// Linux). inviteToken: see JoinNetwork. onSelfID: see Connect. Blocks
-	// until ctx is cancelled.
-	Join func(ctx context.Context, serverAddr, stunAddr, networkName, inviteToken, identityPath string, onSelfID func(selfID string)) error
+	// Linux). inviteToken: see JoinNetwork. onSelfID: see Connect.
+	// onVersionMismatch: see VersionMismatchFunc. Blocks until ctx is
+	// cancelled.
+	Join func(ctx context.Context, serverAddr, stunAddr, networkName, inviteToken, identityPath string, onSelfID func(selfID string), onVersionMismatch VersionMismatchFunc) error
 
-	// Send is "spur send": rendezvous with peerID and stream path (a file
-	// or a directory, walked recursively) through the tunnel to whoever
-	// runs "spur receive" against the same peerID. identityPath, onSelfID,
-	// peerID, onCode: see Connect. onProgress: see ProgressFunc. Blocks
-	// until the transfer finishes or fails.
-	Send func(ctx context.Context, serverAddr, stunAddr, peerID, identityPath, path string, onSelfID func(selfID string), onProgress ProgressFunc, onCode OnCodeFunc) error
+	// CreateRoom is "spur room create": creates a brand-new, persistent,
+	// two-member room named roomName on the server with the caller as its
+	// first member, returning an invite token to hand to the second
+	// participant. Unlike a pairing code, a room never expires and, once
+	// full, can be used as the --room counterpart for connect/expose/
+	// send/receive indefinitely without exchanging anything again.
+	// onVersionMismatch: see VersionMismatchFunc.
+	CreateRoom func(ctx context.Context, serverAddr, roomName, identityPath string, onVersionMismatch VersionMismatchFunc) (RoomResult, error)
 
-	// Receive is "spur receive": rendezvous with peerID and write whatever
-	// "spur send" streams through the tunnel under destDir, recreating the
-	// relative directory structure the sender walked. identityPath,
-	// onSelfID, peerID, onCode: see Connect. onProgress: see ProgressFunc.
+	// JoinRoom is "spur room join": adds the caller as roomName's second
+	// member using inviteToken (see CreateRoom). Idempotent if the caller
+	// is already a member — inviteToken isn't re-checked in that case.
+	// onVersionMismatch: see VersionMismatchFunc.
+	JoinRoom func(ctx context.Context, serverAddr, roomName, inviteToken, identityPath string, onVersionMismatch VersionMismatchFunc) error
+
+	// Send is "spur send": rendezvous with a counterpart and stream path
+	// (a file or a directory, walked recursively) through the tunnel to
+	// whoever runs "spur receive" against the same counterpart.
+	// identityPath, onSelfID, peerID, roomName, onCode,
+	// onVersionMismatch: see Connect. onProgress: see ProgressFunc.
+	// Blocks until the transfer finishes or fails.
+	Send func(ctx context.Context, serverAddr, stunAddr, peerID, roomName, identityPath, path string, onSelfID func(selfID string), onProgress ProgressFunc, onCode OnCodeFunc, onVersionMismatch VersionMismatchFunc) error
+
+	// Receive is "spur receive": rendezvous with a counterpart and write
+	// whatever "spur send" streams through the tunnel under destDir,
+	// recreating the relative directory structure the sender walked.
+	// identityPath, onSelfID, peerID, roomName, onCode,
+	// onVersionMismatch: see Connect. onProgress: see ProgressFunc.
 	// onResumeOffer: see ResumeOfferFunc. Blocks until the transfer
 	// finishes or fails.
-	Receive func(ctx context.Context, serverAddr, stunAddr, peerID, identityPath, destDir string, onSelfID func(selfID string), onProgress ProgressFunc, onCode OnCodeFunc, onResumeOffer ResumeOfferFunc) error
+	Receive func(ctx context.Context, serverAddr, stunAddr, peerID, roomName, identityPath, destDir string, onSelfID func(selfID string), onProgress ProgressFunc, onCode OnCodeFunc, onResumeOffer ResumeOfferFunc, onVersionMismatch VersionMismatchFunc) error
+}
+
+// RoomResult is what a successful `spur room create` reports back to the
+// CLI layer.
+type RoomResult struct {
+	InviteToken string // share with the second participant
 }
 
 // OnCodeFunc is called with a freshly minted pairing code when the
@@ -147,6 +187,15 @@ type OnCodeFunc func(code string)
 // instead of aliases onto domain/controlclient types — cli must not
 // depend on usecase.
 type ProgressFunc func(relPath string, fileDone, fileTotal, overallDone, overallTotal int64)
+
+// VersionMismatchFunc is called when a control-plane RPC's response
+// reveals the server is running a different build version than this
+// client — best-effort compatibility hint, not a hard failure: the
+// client doesn't know which specific features differ, only that the
+// versions don't match and something might not work as expected. nil is
+// valid and means "don't report" — same nil-safe-callback pattern as
+// ProgressFunc/OnCodeFunc.
+type VersionMismatchFunc func(clientVersion, serverVersion string)
 
 // ResumeOfferFunc is asked whether to resume a detected partially-complete
 // file transfer instead of starting over: filesWithData is how many
@@ -196,6 +245,7 @@ func NewClientRootCommand(deps ClientDependencies, defaults ClientDefaults) *cob
 		newJoinNetworkCommand(deps, defaults),
 		newSendCommand(deps, defaults),
 		newReceiveCommand(deps, defaults),
+		newRoomCommand(deps, defaults),
 	)
 
 	return root

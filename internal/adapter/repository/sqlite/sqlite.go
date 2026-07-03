@@ -1,14 +1,18 @@
-// Package sqlite provides persistent port.PeerRepository and
-// port.NetworkRepository implementations backed by SQLite
-// (modernc.org/sqlite — pure Go, no cgo, matches the rest of this module's
-// build requirements). This replaces adapter/repository/memory as the
-// server's default storage: server state now survives a restart instead
-// of resetting every time the process is killed.
+// Package sqlite provides persistent port.PeerRepository,
+// port.NetworkRepository and port.RoomRepository implementations backed
+// by SQLite (modernc.org/sqlite — pure Go, no cgo, matches the rest of
+// this module's build requirements). This replaces adapter/repository/
+// memory as the server's default storage: server state now survives a
+// restart instead of resetting every time the process is killed. Rooms
+// are persisted for the same reason peers/networks are and pairing codes
+// deliberately aren't: a room is meant to outlive any single process
+// restart, that's the whole point of it over a 10-minute pairing code.
 //
-// CandidateStore, RelayBroker and SessionRepository stay in-memory on
-// purpose: they hold short-lived, in-flight coordination state (an
-// in-progress candidate exchange, a live relay splice) that is meaningless
-// after a restart anyway — there is nothing to persist.
+// CandidateStore, RelayBroker, SessionRepository and PairingCodeStore
+// stay in-memory on purpose: they hold short-lived, in-flight
+// coordination state (an in-progress candidate exchange, a live relay
+// splice, a pairing code with a hard TTL) that is meaningless after a
+// restart anyway — there is nothing to persist.
 package sqlite
 
 import (
@@ -42,6 +46,17 @@ CREATE TABLE IF NOT EXISTS network_members (
 	public_key BLOB NOT NULL,
 	mesh_ip TEXT NOT NULL,
 	PRIMARY KEY (network_name, peer_id)
+);
+
+CREATE TABLE IF NOT EXISTS rooms (
+	name TEXT PRIMARY KEY,
+	invite_token TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS room_members (
+	room_name TEXT NOT NULL REFERENCES rooms(name) ON DELETE CASCADE,
+	peer_id TEXT NOT NULL,
+	PRIMARY KEY (room_name, peer_id)
 );
 `
 

@@ -135,6 +135,20 @@ func hostViaPairingCode(onCode cli.OnCodeFunc) counterpartResolver {
 	}
 }
 
+// roomCounterpart is a counterpartResolver for --room: the caller already
+// set up a persistent, two-member room (see roomCreate/roomJoin), so the
+// counterpart is whichever of the two members isn't the caller — resolved
+// server-side, no code or peer ID to type in each time.
+func roomCounterpart(roomName string) counterpartResolver {
+	return func(ctx context.Context, client *controlclient.Client, id infra.Identity) (domain.PeerID, error) {
+		peer, err := client.ResolveRoom(ctx, roomName, id.PublicKey)
+		if err != nil {
+			return "", fmt.Errorf("resolve room %q: %w", roomName, err)
+		}
+		return peer, nil
+	}
+}
+
 // rendezvous runs the full client-side flow shared by "spur connect",
 // "spur expose", "spur send" and "spur receive": load (or create) a
 // persisted identity, register, resolve the counterpart (see
@@ -149,7 +163,7 @@ func hostViaPairingCode(onCode cli.OnCodeFunc) counterpartResolver {
 // there's still a "which peer is this" concept worth surfacing early for
 // diagnostics/scripting — the persisted identity (see
 // infra.LoadOrCreateIdentity) means it's unchanged run to run.
-func rendezvous(ctx context.Context, serverAddr, stunAddr, identityPath string, resolve counterpartResolver, onSelfID func(string)) (tun *establishedTunnel, self domain.PeerID, counterpart domain.PeerID, err error) {
+func rendezvous(ctx context.Context, serverAddr, stunAddr, identityPath string, resolve counterpartResolver, onSelfID func(string), onVersionMismatch cli.VersionMismatchFunc) (tun *establishedTunnel, self domain.PeerID, counterpart domain.PeerID, err error) {
 	resolvedIdentityPath, err := resolveIdentityPath(identityPath)
 	if err != nil {
 		return nil, "", "", err
@@ -174,9 +188,11 @@ func rendezvous(ctx context.Context, serverAddr, stunAddr, identityPath string, 
 		}
 	}()
 
-	if _, err = client.Register(ctx, id.PublicKey); err != nil {
+	regResult, err := client.Register(ctx, id.PublicKey, cli.Version())
+	if err != nil {
 		return nil, "", "", fmt.Errorf("app: register: %w", err)
 	}
+	warnIfVersionMismatch(cli.Version(), regResult.ServerVersion, onVersionMismatch)
 	onSelfID(string(self))
 
 	counterpart, err = resolve(ctx, client, id)
@@ -265,25 +281,52 @@ func rendezvous(ctx context.Context, serverAddr, stunAddr, identityPath string, 
 	return &establishedTunnel{conn: encryptedConn, controlClient: client, udpConn: udpConn}, self, counterpart, nil
 }
 
-// counterpartResolverFor picks between the two counterpartResolver
-// flavors based on whether the user already supplied a --to value: empty
-// means "host" (register a pairing code, wait for it to be used),
+// counterpartResolverFor picks between three counterpartResolver flavors:
+// a non-empty room takes priority (see roomCounterpart — the CLI layer
+// already rejects --to and --room being set together, so this ordering
+// is just a tie-breaker for the impossible case); otherwise an empty
+// --to means "host" (register a pairing code, wait for it to be used),
 // non-empty means "guest" (the value is either a full peer ID or a
 // pairing code — resolveCounterpartArg tells them apart).
-func counterpartResolverFor(to string, onCode cli.OnCodeFunc) counterpartResolver {
+func counterpartResolverFor(to, room string, onCode cli.OnCodeFunc) counterpartResolver {
+	if room != "" {
+		return roomCounterpart(room)
+	}
 	if to == "" {
 		return hostViaPairingCode(onCode)
 	}
 	return resolveCounterpartArg(to)
 }
 
+// warnIfVersionMismatch reports (via onMismatch, nil-safe) when this
+// client and the server it just registered with are running different
+// build versions — a best-effort compatibility hint, not a hard failure:
+// this client has no way to know which specific features differ between
+// the two versions, only that they aren't the same. "dev" (an
+// unreleased/local build, see cli.version's doc comment) on either side
+// isn't meaningfully comparable, so it's skipped rather than flagged as
+// a mismatch on every single local development run.
+func warnIfVersionMismatch(clientVersion, serverVersion string, onMismatch cli.VersionMismatchFunc) {
+	if onMismatch == nil || clientVersion == "" || serverVersion == "" {
+		return
+	}
+	if clientVersion == "dev" || serverVersion == "dev" {
+		return
+	}
+	if clientVersion != serverVersion {
+		onMismatch(clientVersion, serverVersion)
+	}
+}
+
 // connect is "spur connect": forward every local connection on localPort
 // through a tunnel to counterpart, who must be running "spur expose".
 // counterpartID may be empty (host mode: register and print a pairing
 // code, wait for "spur expose <code>" to use it), a full peer ID, or a
-// pairing code the counterpart printed.
-func connect(ctx context.Context, serverAddr, stunAddr, counterpartID, identityPath string, localPort int, onSelfID func(string), onCode cli.OnCodeFunc) error {
-	tun, _, _, err := rendezvous(ctx, serverAddr, stunAddr, identityPath, counterpartResolverFor(counterpartID, onCode), onSelfID)
+// pairing code the counterpart printed; roomName, if non-empty, resolves
+// the counterpart via a persistent room instead (see roomCounterpart) —
+// the CLI layer already ensures the two aren't both set.
+func connect(ctx context.Context, serverAddr, stunAddr, counterpartID, roomName, identityPath string, localPort int, onSelfID func(string), onCode cli.OnCodeFunc, onVersionMismatch cli.VersionMismatchFunc) error {
+	tun, _, _, err := rendezvous(ctx, serverAddr, stunAddr, identityPath, counterpartResolverFor(counterpartID, roomName, onCode), onSelfID, onVersionMismatch)
 	if err != nil {
 		return err
 	}
@@ -299,10 +342,10 @@ func connect(ctx context.Context, serverAddr, stunAddr, counterpartID, identityP
 }
 
 // expose is "spur expose": accept tunnel streams from counterpart and
-// forward each to targetPort on the local machine. counterpartID: see
-// connect.
-func expose(ctx context.Context, serverAddr, stunAddr, counterpartID, identityPath string, targetPort int, onSelfID func(string), onCode cli.OnCodeFunc) error {
-	tun, _, _, err := rendezvous(ctx, serverAddr, stunAddr, identityPath, counterpartResolverFor(counterpartID, onCode), onSelfID)
+// forward each to targetPort on the local machine. counterpartID,
+// roomName: see connect.
+func expose(ctx context.Context, serverAddr, stunAddr, counterpartID, roomName, identityPath string, targetPort int, onSelfID func(string), onCode cli.OnCodeFunc, onVersionMismatch cli.VersionMismatchFunc) error {
+	tun, _, _, err := rendezvous(ctx, serverAddr, stunAddr, identityPath, counterpartResolverFor(counterpartID, roomName, onCode), onSelfID, onVersionMismatch)
 	if err != nil {
 		return err
 	}

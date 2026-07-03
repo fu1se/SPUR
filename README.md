@@ -150,10 +150,43 @@ form; `spur` tells them apart automatically by shape (a peer-id is
 always 32 lowercase hex characters, a pairing code is shorter and
 uppercase).
 
+### The long-term way: rooms
+
+Pairing codes expire in 10 minutes and full peer-ids have to be
+exchanged out of band every time. If you regularly connect to the same
+specific person, set up a room once instead:
+
+```sh
+spur room create --server SERVER:4443 --room friends
+```
+
+This prints an invite token. Send it to the other person once — they
+join with it:
+
+```sh
+spur room join --server SERVER:4443 --room friends --invite <token>
+```
+
+From then on, either side can use `--room friends` in place of `--to`
+on `connect`/`expose`/`send`/`receive` — no code or peer-id to type or
+exchange again, indefinitely (a room, unlike a pairing code, doesn't
+expire and survives a server restart):
+
+```sh
+spur send --server SERVER:4443 --stun-server SERVER:4444 --room friends ./path/to/file
+```
+
+A room is capped at exactly two members and its name is a shared secret
+between the two of you in practice (a third person would need both the
+exact room name and the invite token to join) — see
+[Security](#security).
+
 ### Check connectivity to the server
 
 An optional diagnostic step — register with the server and see what
-address it observes for you (useful for debugging NAT):
+address it observes for you (useful for debugging NAT). It also compares
+your client's build version against the server's and warns if they
+differ:
 
 ```sh
 spur register --server SERVER:4443
@@ -161,6 +194,15 @@ spur register --server SERVER:4443
 
 Prints `peer-id` and `observed-address` (your public `ip:port`, as seen
 by the server).
+
+### Version mismatch warnings
+
+Every command that talks to the server (`register`, `connect`, `expose`,
+`send`, `receive`, `join`, `join-network`, `room create`, `room join`)
+compares its own build version against the server's and prints a warning
+if they differ — a heads-up that some functionality might not work as
+expected, not a hard failure. Keep both sides on the same release when
+possible (see [Installation](#installation) for how to update).
 
 ## All client actions
 
@@ -256,9 +298,11 @@ spur send --server SERVER:4443 --stun-server SERVER:4444 \
 Both commands exit with code `0` once everything has been transferred
 and acknowledged by the receiving side. Both also print a live-updating
 progress line to stderr while transferring — current file, percentage,
-transfer speed, and overall bytes moved. The receiving side reads the
-sender's full file list before any content arrives, so both sides show a
-real overall percentage from the start.
+transfer speed, overall bytes moved, and an estimated time remaining
+(`~2м 05с` — derived from the current transfer speed, so it settles down
+after the first second or two rather than being accurate immediately).
+The receiving side reads the sender's full file list before any content
+arrives, so both sides show a real overall percentage from the start.
 
 **Resuming an interrupted transfer**: if `receive` is interrupted
 (crash, `Ctrl+C`, lost connection) partway through, just run the same
@@ -307,6 +351,8 @@ itself is optional — its absence doesn't change any default behavior.
 | `spur join-network` | Diagnostic: the same network coordination, without TUN and without root |
 | `spur send` | Send a file/directory to a peer running `spur receive` |
 | `spur receive` | Receive a file/directory from a peer running `spur send` |
+| `spur room create` | Create a long-term, two-member room and get an invite token |
+| `spur room join` | Join a room created by someone else, using its invite token |
 | `spur version` / `spur-server version` | Build version |
 
 Every command has `--help` with the full list of flags.
@@ -333,6 +379,14 @@ Every command has `--help` with the full list of flags.
   get an attacker anywhere near impersonating the peer it points to —
   the actual session still goes through the same end-to-end key exchange
   as a connection addressed by full peer-id.
+- **Rooms** are capped at exactly two members forever — a third `room
+  join` attempt is rejected outright, even with the right invite token.
+  Joining an existing room requires the invite token issued at creation
+  (compared constant-time server-side, same as mesh network tokens);
+  after both members have joined, resolving `--room <name>` to a peer-id
+  requires the caller to already be one of the two members — an outsider
+  who merely learns the room name gets nothing without the token used to
+  actually join it.
 
 Architecture details, known limitations, and the reasoning behind every
 development phase's decisions are in `CLAUDE.md`.

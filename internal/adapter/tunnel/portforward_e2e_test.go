@@ -116,7 +116,7 @@ func doRendezvous(ctx context.Context, controlAddr string, stunAddr netip.AddrPo
 		return nil, "", err
 	}
 
-	if _, err := client.Register(ctx, self); err != nil {
+	if _, err := client.Register(ctx, self, "test"); err != nil {
 		client.Close()
 		return nil, "", err
 	}

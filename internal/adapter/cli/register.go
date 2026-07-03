@@ -21,7 +21,7 @@ func newRegisterCommand(deps ClientDependencies, defaults ClientDefaults) *cobra
 			if serverAddr == "" {
 				return errors.New("register: укажите --server")
 			}
-			result, err := deps.Register(cmd.Context(), serverAddr)
+			result, err := deps.Register(cmd.Context(), serverAddr, newVersionWarningPrinter(cmd))
 			if err != nil {
 				return err
 			}

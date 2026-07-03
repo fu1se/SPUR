@@ -14,10 +14,12 @@ import (
 // recursively) to counterpart, who must be running "spur receive" against
 // the same peer ID (or, with counterpartID empty, register a pairing
 // code and wait for "spur receive <code>" instead — see
-// counterpartResolverFor). onProgress is forwarded straight into
-// usecase.SendFiles.OnProgress — see cli.ProgressFunc's doc comment for
-// why the rendering itself lives in the cli package, not here.
-func send(ctx context.Context, serverAddr, stunAddr, counterpartID, identityPath, path string, onSelfID func(string), onProgress cli.ProgressFunc, onCode cli.OnCodeFunc) error {
+// counterpartResolverFor). roomName, if non-empty, resolves the
+// counterpart via a persistent room instead. onProgress is forwarded
+// straight into usecase.SendFiles.OnProgress — see cli.ProgressFunc's
+// doc comment for why the rendering itself lives in the cli package, not
+// here.
+func send(ctx context.Context, serverAddr, stunAddr, counterpartID, roomName, identityPath, path string, onSelfID func(string), onProgress cli.ProgressFunc, onCode cli.OnCodeFunc, onVersionMismatch cli.VersionMismatchFunc) error {
 	// Checked up front, before rendezvous: usecase.SendFiles only
 	// discovers a bad local path (typo, doesn't exist, no permission)
 	// after the full P2P handshake completes, which can take up to a
@@ -28,7 +30,7 @@ func send(ctx context.Context, serverAddr, stunAddr, counterpartID, identityPath
 		return fmt.Errorf("app: %w", err)
 	}
 
-	tun, _, _, err := rendezvous(ctx, serverAddr, stunAddr, identityPath, counterpartResolverFor(counterpartID, onCode), onSelfID)
+	tun, _, _, err := rendezvous(ctx, serverAddr, stunAddr, identityPath, counterpartResolverFor(counterpartID, roomName, onCode), onSelfID, onVersionMismatch)
 	if err != nil {
 		return err
 	}
@@ -39,11 +41,12 @@ func send(ctx context.Context, serverAddr, stunAddr, counterpartID, identityPath
 
 // receive is "spur receive": accept whatever counterpart streams via
 // "spur send" and write it under destDir, recreating the sender's relative
-// directory structure. counterpartID, onCode: see send. onProgress: see
-// send. onResumeOffer is forwarded into usecase.ReceiveFiles.OnResumeOffer
-// — see cli.ResumeOfferFunc's doc comment.
-func receive(ctx context.Context, serverAddr, stunAddr, counterpartID, identityPath, destDir string, onSelfID func(string), onProgress cli.ProgressFunc, onCode cli.OnCodeFunc, onResumeOffer cli.ResumeOfferFunc) error {
-	tun, _, _, err := rendezvous(ctx, serverAddr, stunAddr, identityPath, counterpartResolverFor(counterpartID, onCode), onSelfID)
+// directory structure. counterpartID, roomName, onCode: see send.
+// onProgress: see send. onResumeOffer is forwarded into
+// usecase.ReceiveFiles.OnResumeOffer — see cli.ResumeOfferFunc's doc
+// comment.
+func receive(ctx context.Context, serverAddr, stunAddr, counterpartID, roomName, identityPath, destDir string, onSelfID func(string), onProgress cli.ProgressFunc, onCode cli.OnCodeFunc, onResumeOffer cli.ResumeOfferFunc, onVersionMismatch cli.VersionMismatchFunc) error {
+	tun, _, _, err := rendezvous(ctx, serverAddr, stunAddr, identityPath, counterpartResolverFor(counterpartID, roomName, onCode), onSelfID, onVersionMismatch)
 	if err != nil {
 		return err
 	}

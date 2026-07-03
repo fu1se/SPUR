@@ -95,7 +95,7 @@ func runFallbackPeer(
 		return domain.Session{}, nil, err
 	}
 
-	if _, err := client.Register(ctx, self); err != nil {
+	if _, err := client.Register(ctx, self, "test"); err != nil {
 		client.Close()
 		return domain.Session{}, nil, err
 	}

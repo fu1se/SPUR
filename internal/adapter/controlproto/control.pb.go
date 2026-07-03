@@ -25,7 +25,8 @@ const (
 // handshake completes, to announce its identity to the rendezvous server.
 type RegisterRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	PublicKey     []byte                 `protobuf:"bytes,1,opt,name=public_key,json=publicKey,proto3" json:"public_key,omitempty"` // 32 bytes, Curve25519/WireGuard-compatible
+	PublicKey     []byte                 `protobuf:"bytes,1,opt,name=public_key,json=publicKey,proto3" json:"public_key,omitempty"`             // 32 bytes, Curve25519/WireGuard-compatible
+	ClientVersion string                 `protobuf:"bytes,2,opt,name=client_version,json=clientVersion,proto3" json:"client_version,omitempty"` // this client's build version (cli.Version()),
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -67,12 +68,20 @@ func (x *RegisterRequest) GetPublicKey() []byte {
 	return nil
 }
 
+func (x *RegisterRequest) GetClientVersion() string {
+	if x != nil {
+		return x.ClientVersion
+	}
+	return ""
+}
+
 // RegisterResponse tells the client how the server sees it, i.e. its
 // server-reflexive candidate — the STUN-equivalent part of registration.
 type RegisterResponse struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	PeerId          string                 `protobuf:"bytes,1,opt,name=peer_id,json=peerId,proto3" json:"peer_id,omitempty"`
 	ObservedAddress string                 `protobuf:"bytes,2,opt,name=observed_address,json=observedAddress,proto3" json:"observed_address,omitempty"` // host:port as seen by the server
+	ServerVersion   string                 `protobuf:"bytes,3,opt,name=server_version,json=serverVersion,proto3" json:"server_version,omitempty"`       // the server's own build version, so the
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -117,6 +126,13 @@ func (x *RegisterResponse) GetPeerId() string {
 func (x *RegisterResponse) GetObservedAddress() string {
 	if x != nil {
 		return x.ObservedAddress
+	}
+	return ""
+}
+
+func (x *RegisterResponse) GetServerVersion() string {
+	if x != nil {
+		return x.ServerVersion
 	}
 	return ""
 }
@@ -941,18 +957,347 @@ func (x *AwaitPairingCodeUseResponse) GetPeerId() string {
 	return ""
 }
 
+// CreateRoomRequest asks the server to create a brand-new, persistent
+// room named room_name with the caller as its first (of exactly two)
+// member — unlike a pairing code (single-use, expires in minutes) or a
+// mesh network (many members, TUN/WireGuard), a room is a long-lived
+// pairing between two specific, already-known people who don't want to
+// re-exchange a peer ID or code every time they connect. Fails if the
+// name is already taken.
+type CreateRoomRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	RoomName      string                 `protobuf:"bytes,1,opt,name=room_name,json=roomName,proto3" json:"room_name,omitempty"`
+	PublicKey     []byte                 `protobuf:"bytes,2,opt,name=public_key,json=publicKey,proto3" json:"public_key,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateRoomRequest) Reset() {
+	*x = CreateRoomRequest{}
+	mi := &file_control_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateRoomRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateRoomRequest) ProtoMessage() {}
+
+func (x *CreateRoomRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_control_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateRoomRequest.ProtoReflect.Descriptor instead.
+func (*CreateRoomRequest) Descriptor() ([]byte, []int) {
+	return file_control_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *CreateRoomRequest) GetRoomName() string {
+	if x != nil {
+		return x.RoomName
+	}
+	return ""
+}
+
+func (x *CreateRoomRequest) GetPublicKey() []byte {
+	if x != nil {
+		return x.PublicKey
+	}
+	return nil
+}
+
+type CreateRoomResponse struct {
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	InviteToken string                 `protobuf:"bytes,1,opt,name=invite_token,json=inviteToken,proto3" json:"invite_token,omitempty"` // share with the second participant, who
+	// presents it once in JoinRoomRequest
+	Error         string `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"` // non-empty means creation was rejected (e.g. the
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateRoomResponse) Reset() {
+	*x = CreateRoomResponse{}
+	mi := &file_control_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateRoomResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateRoomResponse) ProtoMessage() {}
+
+func (x *CreateRoomResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_control_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateRoomResponse.ProtoReflect.Descriptor instead.
+func (*CreateRoomResponse) Descriptor() ([]byte, []int) {
+	return file_control_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *CreateRoomResponse) GetInviteToken() string {
+	if x != nil {
+		return x.InviteToken
+	}
+	return ""
+}
+
+func (x *CreateRoomResponse) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
+// JoinRoomRequest asks the server to add the caller as the room's second
+// member. invite_token must match what CreateRoom returned, unless the
+// caller is already a member (idempotent rejoin, same convention as
+// JoinNetworkRequest).
+type JoinRoomRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	RoomName      string                 `protobuf:"bytes,1,opt,name=room_name,json=roomName,proto3" json:"room_name,omitempty"`
+	PublicKey     []byte                 `protobuf:"bytes,2,opt,name=public_key,json=publicKey,proto3" json:"public_key,omitempty"`
+	InviteToken   string                 `protobuf:"bytes,3,opt,name=invite_token,json=inviteToken,proto3" json:"invite_token,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *JoinRoomRequest) Reset() {
+	*x = JoinRoomRequest{}
+	mi := &file_control_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *JoinRoomRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*JoinRoomRequest) ProtoMessage() {}
+
+func (x *JoinRoomRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_control_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use JoinRoomRequest.ProtoReflect.Descriptor instead.
+func (*JoinRoomRequest) Descriptor() ([]byte, []int) {
+	return file_control_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *JoinRoomRequest) GetRoomName() string {
+	if x != nil {
+		return x.RoomName
+	}
+	return ""
+}
+
+func (x *JoinRoomRequest) GetPublicKey() []byte {
+	if x != nil {
+		return x.PublicKey
+	}
+	return nil
+}
+
+func (x *JoinRoomRequest) GetInviteToken() string {
+	if x != nil {
+		return x.InviteToken
+	}
+	return ""
+}
+
+type JoinRoomResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Error         string                 `protobuf:"bytes,1,opt,name=error,proto3" json:"error,omitempty"` // non-empty means the join was rejected (room
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *JoinRoomResponse) Reset() {
+	*x = JoinRoomResponse{}
+	mi := &file_control_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *JoinRoomResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*JoinRoomResponse) ProtoMessage() {}
+
+func (x *JoinRoomResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_control_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use JoinRoomResponse.ProtoReflect.Descriptor instead.
+func (*JoinRoomResponse) Descriptor() ([]byte, []int) {
+	return file_control_proto_rawDescGZIP(), []int{20}
+}
+
+func (x *JoinRoomResponse) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
+// ResolveRoomRequest asks the server who the caller's counterpart is in
+// an already-full room — used by connect/expose/send/receive's --room
+// flag as an alternative to a peer ID or pairing code.
+type ResolveRoomRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	RoomName      string                 `protobuf:"bytes,1,opt,name=room_name,json=roomName,proto3" json:"room_name,omitempty"`
+	PublicKey     []byte                 `protobuf:"bytes,2,opt,name=public_key,json=publicKey,proto3" json:"public_key,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ResolveRoomRequest) Reset() {
+	*x = ResolveRoomRequest{}
+	mi := &file_control_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ResolveRoomRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ResolveRoomRequest) ProtoMessage() {}
+
+func (x *ResolveRoomRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_control_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ResolveRoomRequest.ProtoReflect.Descriptor instead.
+func (*ResolveRoomRequest) Descriptor() ([]byte, []int) {
+	return file_control_proto_rawDescGZIP(), []int{21}
+}
+
+func (x *ResolveRoomRequest) GetRoomName() string {
+	if x != nil {
+		return x.RoomName
+	}
+	return ""
+}
+
+func (x *ResolveRoomRequest) GetPublicKey() []byte {
+	if x != nil {
+		return x.PublicKey
+	}
+	return nil
+}
+
+type ResolveRoomResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	PeerId        string                 `protobuf:"bytes,1,opt,name=peer_id,json=peerId,proto3" json:"peer_id,omitempty"` // the other member's peer ID
+	Error         string                 `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`                 // non-empty means resolution failed (room doesn't
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ResolveRoomResponse) Reset() {
+	*x = ResolveRoomResponse{}
+	mi := &file_control_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ResolveRoomResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ResolveRoomResponse) ProtoMessage() {}
+
+func (x *ResolveRoomResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_control_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ResolveRoomResponse.ProtoReflect.Descriptor instead.
+func (*ResolveRoomResponse) Descriptor() ([]byte, []int) {
+	return file_control_proto_rawDescGZIP(), []int{22}
+}
+
+func (x *ResolveRoomResponse) GetPeerId() string {
+	if x != nil {
+		return x.PeerId
+	}
+	return ""
+}
+
+func (x *ResolveRoomResponse) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
 var File_control_proto protoreflect.FileDescriptor
 
 const file_control_proto_rawDesc = "" +
 	"\n" +
 	"\rcontrol.proto\x12\n" +
-	"control.v1\"0\n" +
+	"control.v1\"W\n" +
 	"\x0fRegisterRequest\x12\x1d\n" +
 	"\n" +
-	"public_key\x18\x01 \x01(\fR\tpublicKey\"V\n" +
+	"public_key\x18\x01 \x01(\fR\tpublicKey\x12%\n" +
+	"\x0eclient_version\x18\x02 \x01(\tR\rclientVersion\"}\n" +
 	"\x10RegisterResponse\x12\x17\n" +
 	"\apeer_id\x18\x01 \x01(\tR\x06peerId\x12)\n" +
-	"\x10observed_address\x18\x02 \x01(\tR\x0fobservedAddress\"9\n" +
+	"\x10observed_address\x18\x02 \x01(\tR\x0fobservedAddress\x12%\n" +
+	"\x0eserver_version\x18\x03 \x01(\tR\rserverVersion\"9\n" +
 	"\tCandidate\x12\x12\n" +
 	"\x04kind\x18\x01 \x01(\tR\x04kind\x12\x18\n" +
 	"\aaddress\x18\x02 \x01(\tR\aaddress\"\xbc\x01\n" +
@@ -1012,7 +1357,28 @@ const file_control_proto_rawDesc = "" +
 	"\x1aAwaitPairingCodeUseRequest\x12\x12\n" +
 	"\x04code\x18\x01 \x01(\tR\x04code\"6\n" +
 	"\x1bAwaitPairingCodeUseResponse\x12\x17\n" +
-	"\apeer_id\x18\x01 \x01(\tR\x06peerIdB5Z3github.com/fu1se/spur/internal/adapter/controlprotob\x06proto3"
+	"\apeer_id\x18\x01 \x01(\tR\x06peerId\"O\n" +
+	"\x11CreateRoomRequest\x12\x1b\n" +
+	"\troom_name\x18\x01 \x01(\tR\broomName\x12\x1d\n" +
+	"\n" +
+	"public_key\x18\x02 \x01(\fR\tpublicKey\"M\n" +
+	"\x12CreateRoomResponse\x12!\n" +
+	"\finvite_token\x18\x01 \x01(\tR\vinviteToken\x12\x14\n" +
+	"\x05error\x18\x02 \x01(\tR\x05error\"p\n" +
+	"\x0fJoinRoomRequest\x12\x1b\n" +
+	"\troom_name\x18\x01 \x01(\tR\broomName\x12\x1d\n" +
+	"\n" +
+	"public_key\x18\x02 \x01(\fR\tpublicKey\x12!\n" +
+	"\finvite_token\x18\x03 \x01(\tR\vinviteToken\"(\n" +
+	"\x10JoinRoomResponse\x12\x14\n" +
+	"\x05error\x18\x01 \x01(\tR\x05error\"P\n" +
+	"\x12ResolveRoomRequest\x12\x1b\n" +
+	"\troom_name\x18\x01 \x01(\tR\broomName\x12\x1d\n" +
+	"\n" +
+	"public_key\x18\x02 \x01(\fR\tpublicKey\"D\n" +
+	"\x13ResolveRoomResponse\x12\x17\n" +
+	"\apeer_id\x18\x01 \x01(\tR\x06peerId\x12\x14\n" +
+	"\x05error\x18\x02 \x01(\tR\x05errorB5Z3github.com/fu1se/spur/internal/adapter/controlprotob\x06proto3"
 
 var (
 	file_control_proto_rawDescOnce sync.Once
@@ -1026,7 +1392,7 @@ func file_control_proto_rawDescGZIP() []byte {
 	return file_control_proto_rawDescData
 }
 
-var file_control_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
+var file_control_proto_msgTypes = make([]protoimpl.MessageInfo, 23)
 var file_control_proto_goTypes = []any{
 	(*RegisterRequest)(nil),             // 0: control.v1.RegisterRequest
 	(*RegisterResponse)(nil),            // 1: control.v1.RegisterResponse
@@ -1045,6 +1411,12 @@ var file_control_proto_goTypes = []any{
 	(*ResolvePairingCodeResponse)(nil),  // 14: control.v1.ResolvePairingCodeResponse
 	(*AwaitPairingCodeUseRequest)(nil),  // 15: control.v1.AwaitPairingCodeUseRequest
 	(*AwaitPairingCodeUseResponse)(nil), // 16: control.v1.AwaitPairingCodeUseResponse
+	(*CreateRoomRequest)(nil),           // 17: control.v1.CreateRoomRequest
+	(*CreateRoomResponse)(nil),          // 18: control.v1.CreateRoomResponse
+	(*JoinRoomRequest)(nil),             // 19: control.v1.JoinRoomRequest
+	(*JoinRoomResponse)(nil),            // 20: control.v1.JoinRoomResponse
+	(*ResolveRoomRequest)(nil),          // 21: control.v1.ResolveRoomRequest
+	(*ResolveRoomResponse)(nil),         // 22: control.v1.ResolveRoomResponse
 }
 var file_control_proto_depIdxs = []int32{
 	2, // 0: control.v1.PublishCandidatesRequest.candidates:type_name -> control.v1.Candidate
@@ -1068,7 +1440,7 @@ func file_control_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_control_proto_rawDesc), len(file_control_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   17,
+			NumMessages:   23,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

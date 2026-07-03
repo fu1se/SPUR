@@ -10,6 +10,7 @@ import (
 
 	"golang.zx2c4.com/wireguard/device"
 
+	"github.com/fu1se/spur/internal/adapter/cli"
 	"github.com/fu1se/spur/internal/adapter/controlclient"
 	"github.com/fu1se/spur/internal/adapter/wgmesh"
 	"github.com/fu1se/spur/internal/domain"
@@ -44,7 +45,7 @@ const meshRefreshInterval = 5 * time.Second
 // Requires elevated privileges (root/CAP_NET_ADMIN on Linux): creating the
 // TUN device and assigning it an address changes real system network
 // state.
-func join(ctx context.Context, serverAddr, stunAddr, networkName, inviteToken, identityPath string, onSelfID func(string)) error {
+func join(ctx context.Context, serverAddr, stunAddr, networkName, inviteToken, identityPath string, onSelfID func(string), onVersionMismatch cli.VersionMismatchFunc) error {
 	resolvedIdentityPath, err := resolveIdentityPath(identityPath)
 	if err != nil {
 		return err
@@ -65,6 +66,12 @@ func join(ctx context.Context, serverAddr, stunAddr, networkName, inviteToken, i
 		return fmt.Errorf("app: dial control-plane: %w", err)
 	}
 	defer joinClient.Close()
+
+	regResult, err := joinClient.Register(ctx, id.PublicKey, cli.Version())
+	if err != nil {
+		return fmt.Errorf("app: register: %w", err)
+	}
+	warnIfVersionMismatch(cli.Version(), regResult.ServerVersion, onVersionMismatch)
 
 	network, err := joinClient.JoinNetwork(ctx, networkName, inviteToken, id.PublicKey)
 	if err != nil {
@@ -197,7 +204,7 @@ func (m *meshPeers) reapDeadConnection(peer domain.PeerID) bool {
 }
 
 func (m *meshPeers) connectOne(ctx context.Context, mem domain.MeshMember) {
-	tun, _, _, err := rendezvous(ctx, m.serverAddr, m.stunAddr, m.identityPath, fixedCounterpart(mem.PeerID), func(string) {})
+	tun, _, _, err := rendezvous(ctx, m.serverAddr, m.stunAddr, m.identityPath, fixedCounterpart(mem.PeerID), func(string) {}, nil)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "spur: mesh: rendezvous with %s failed: %v\n", mem.PeerID, err)
 		return

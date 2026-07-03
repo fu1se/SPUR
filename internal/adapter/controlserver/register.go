@@ -38,11 +38,12 @@ func (s *Server) handleRegister(ctx context.Context, conn *quic.Conn, stream *qu
 		return
 	}
 
-	s.log().Info().Str("peer_id", string(peer.ID)).Str("observed", observed.Addr.String()).Msg("peer registered")
+	s.log().Info().Str("peer_id", string(peer.ID)).Str("observed", observed.Addr.String()).Str("client_version", req.GetClientVersion()).Msg("peer registered")
 
 	_ = controlproto.WriteFrame(stream, &controlproto.RegisterResponse{
 		PeerId:          string(peer.ID),
 		ObservedAddress: observed.Addr.String(),
+		ServerVersion:   s.Version,
 	})
 }
 

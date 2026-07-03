@@ -21,6 +21,9 @@ const (
 	MethodRegisterPairingCode
 	MethodResolvePairingCode
 	MethodAwaitPairingCodeUse
+	MethodCreateRoom
+	MethodJoinRoom
+	MethodResolveRoom
 )
 
 func WriteMethod(w io.Writer, m Method) error {

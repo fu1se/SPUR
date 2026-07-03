@@ -117,6 +117,7 @@ func runServer(ctx context.Context, controlAddr, stunAddr, dbPath string, verbos
 
 	peers := sqlite.NewPeerRepository(db)
 	networks := sqlite.NewNetworkRepository(db)
+	rooms := sqlite.NewRoomRepository(db)
 	candidateBroker := memory.NewCandidateBroker()
 	relayBroker := memory.NewRelayBroker()
 	pairingCodeBroker := memory.NewPairingCodeBroker()
@@ -129,6 +130,10 @@ func runServer(ctx context.Context, controlAddr, stunAddr, dbPath string, verbos
 		RegisterPairingCode: usecase.RegisterPairingCode{Store: pairingCodeBroker},
 		ResolvePairingCode:  usecase.ResolvePairingCode{Store: pairingCodeBroker},
 		AwaitPairingCodeUse: usecase.AwaitPairingCodeUse{Store: pairingCodeBroker},
+		CreateRoom:          usecase.CreateRoom{Rooms: rooms},
+		JoinRoom:            usecase.JoinRoom{Rooms: rooms},
+		ResolveRoom:         usecase.ResolveRoom{Rooms: rooms},
+		Version:             cli.Version(),
 		Logger:              &logger,
 	}
 

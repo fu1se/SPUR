@@ -40,3 +40,16 @@ type SessionRepository interface {
 	Save(ctx context.Context, session domain.Session) error
 	FindByID(ctx context.Context, id string) (domain.Session, error)
 }
+
+// RoomRepository persists long-lived, two-member room definitions.
+type RoomRepository interface {
+	FindByName(ctx context.Context, name string) (domain.Room, error)
+
+	// Update atomically loads the room named name (or a zero-value
+	// domain.Room{Name: name} if none exists yet — check len(room.Members)
+	// == 0 && room.InviteToken == "" to tell the difference), applies
+	// mutate, and persists the result. Implementations must serialize
+	// concurrent Update calls for the same name — same atomicity
+	// requirement, and the same reason, as NetworkRepository.Update.
+	Update(ctx context.Context, name string, mutate func(domain.Room) (domain.Room, error)) (domain.Room, error)
+}

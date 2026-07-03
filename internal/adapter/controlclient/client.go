@@ -37,12 +37,18 @@ func (c *Client) Close() error {
 type RegisterResult struct {
 	PeerID          domain.PeerID
 	ObservedAddress string
+	// ServerVersion is the server's own build version — empty if the
+	// server didn't set one (an old build predating this field, or a
+	// composition root that left controlserver.Server.Version unset).
+	ServerVersion string
 }
 
-// Register announces pub to the server and returns the peer ID the server
-// assigned plus the address the server observed the client at (the
-// server-reflexive candidate).
-func (c *Client) Register(ctx context.Context, pub domain.PublicKey) (RegisterResult, error) {
+// Register announces pub (and this client's own build version, purely
+// informational — see RegisterRequest.client_version) to the server and
+// returns the peer ID the server assigned, the address the server
+// observed the client at (the server-reflexive candidate), and the
+// server's own build version for the caller to compare against its own.
+func (c *Client) Register(ctx context.Context, pub domain.PublicKey, clientVersion string) (RegisterResult, error) {
 	stream, err := c.conn.OpenStreamSync(ctx)
 	if err != nil {
 		return RegisterResult{}, fmt.Errorf("controlclient: open stream: %w", err)
@@ -53,7 +59,8 @@ func (c *Client) Register(ctx context.Context, pub domain.PublicKey) (RegisterRe
 		return RegisterResult{}, err
 	}
 	if err := controlproto.WriteFrame(stream, &controlproto.RegisterRequest{
-		PublicKey: pub[:],
+		PublicKey:     pub[:],
+		ClientVersion: clientVersion,
 	}); err != nil {
 		return RegisterResult{}, err
 	}
@@ -66,5 +73,6 @@ func (c *Client) Register(ctx context.Context, pub domain.PublicKey) (RegisterRe
 	return RegisterResult{
 		PeerID:          domain.PeerID(resp.PeerId),
 		ObservedAddress: resp.ObservedAddress,
+		ServerVersion:   resp.ServerVersion,
 	}, nil
 }

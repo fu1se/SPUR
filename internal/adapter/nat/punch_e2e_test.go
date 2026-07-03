@@ -94,7 +94,7 @@ func runPeer(
 	}
 	defer client.Close()
 
-	if _, err := client.Register(ctx, self); err != nil {
+	if _, err := client.Register(ctx, self, "test"); err != nil {
 		return netip.AddrPort{}, err
 	}
 

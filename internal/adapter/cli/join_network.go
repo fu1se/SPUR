@@ -27,7 +27,7 @@ func newJoinNetworkCommand(deps ClientDependencies, defaults ClientDefaults) *co
 			if serverAddr == "" || networkName == "" {
 				return errors.New("join-network: укажите --server и --network")
 			}
-			result, err := deps.JoinNetwork(cmd.Context(), serverAddr, networkName, inviteToken, identityPath)
+			result, err := deps.JoinNetwork(cmd.Context(), serverAddr, networkName, inviteToken, identityPath, newVersionWarningPrinter(cmd))
 			if err != nil {
 				return err
 			}
