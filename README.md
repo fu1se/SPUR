@@ -105,10 +105,38 @@ address.
 
 ## Client quick start
 
-### 1. Find your peer-id
+### The quick way: pairing codes
 
-Every client is identified by its `peer-id`, which others pass in
-`--to`. The ID is printed locally, with no network access:
+Every point-to-point command (`connect`, `expose`, `send`, `receive`)
+works without either side needing to know anything about the other
+ahead of time. Leave `--to` empty on one side — it registers a short
+code and waits:
+
+```sh
+spur receive --server SERVER:4443 --stun-server SERVER:4444 --out ./received
+# Код для подключения: 5PFGG5
+# Сообщите его собеседнику — он должен указать этот код в --to. Ждём подключения (до 10 минут)...
+```
+
+Tell the other side that code — they pass it as `--to`, same as a
+peer-id:
+
+```sh
+spur send --server SERVER:4443 --stun-server SERVER:4444 --to 5PFGG5 ./file-or-directory
+```
+
+That's the whole flow: no separate `whoami` step, no exchanging long
+hex IDs. The code is a short-lived (10 minute), server-mediated pointer
+to whichever side registered it — not a shortened/weakened version of
+the real identity, so guessing one doesn't get you anything close to
+impersonating a peer (see [Security](#security)).
+
+### The other way: full peer-id
+
+Useful for scripting, or reconnecting to someone you already know the
+ID of without a fresh round of code exchange. Every client has a
+permanent `peer-id`, which can be passed in `--to` exactly like a
+pairing code:
 
 ```sh
 spur whoami
@@ -116,14 +144,13 @@ spur whoami
 
 The identity (an X25519 key) is generated on first run and saved to
 `~/.config/spur/identity.key` — subsequent runs of `whoami` return the
-same ID. Without this, the two sides would have no way to learn each
-other's ID ahead of the first real connection.
+same ID. Participants share it with each other manually (chat, voice,
+whatever) — the server doesn't do this for them. `--to` accepts either
+form; `spur` tells them apart automatically by shape (a peer-id is
+always 32 lowercase hex characters, a pairing code is shorter and
+uppercase).
 
-To exchange IDs, participants need to share the output of `spur whoami`
-with each other manually (chat, voice, whatever) — the server doesn't do
-this for them.
-
-### 2. Check connectivity to the server
+### Check connectivity to the server
 
 An optional diagnostic step — register with the server and see what
 address it observes for you (useful for debugging NAT):
@@ -141,7 +168,8 @@ by the server).
 
 Like `ssh -L`/`ngrok`, but directly P2P (or via relay if that fails).
 One side exposes a local service (`expose`), the other connects to it
-(`connect`).
+(`connect`). `--to` on either side accepts a peer-id or a pairing code,
+same as everywhere else — omit it to generate a code instead.
 
 On the machine with the service (e.g. SSH on port 22):
 
@@ -209,11 +237,11 @@ command exits on its own once the transfer finishes, no need to keep it
 running.
 
 On the receiving side (start `receive` first — it waits for the transfer
-to begin):
+to begin). Leave `--to` empty to get a pairing code instead of needing
+the sender's peer-id up front:
 
 ```sh
-spur receive --server SERVER:4443 --stun-server SERVER:4444 \
-  --to <sender's peer-id> --out ./received
+spur receive --server SERVER:4443 --stun-server SERVER:4444 --out ./received
 ```
 
 On the sending side — the path can be either a single file or a
@@ -222,7 +250,7 @@ folders):
 
 ```sh
 spur send --server SERVER:4443 --stun-server SERVER:4444 \
-  --to <recipient's peer-id> ./path/to/file-or-directory
+  --to <the code printed above, or the recipient's peer-id> ./path/to/file-or-directory
 ```
 
 Both commands exit with code `0` once everything has been transferred
@@ -280,6 +308,14 @@ Every command has `--help` with the full list of flags.
 - **Mesh networks** are protected by an invite token: joining an
   already-existing network requires knowing the token issued when it was
   created.
+- **Pairing codes** are a short-lived (10 minute), server-mediated
+  pointer to a peer-id — not a shortened or weakened derivation of the
+  real identity. The server hands out and resolves the mapping; nobody
+  can compute someone else's code from their peer-id or vice versa, and
+  guessing a code (~1 billion possibilities, expires quickly) doesn't
+  get an attacker anywhere near impersonating the peer it points to —
+  the actual session still goes through the same end-to-end key exchange
+  as a connection addressed by full peer-id.
 
 Architecture details, known limitations, and the reasoning behind every
 development phase's decisions are in `CLAUDE.md`.

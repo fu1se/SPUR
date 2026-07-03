@@ -92,3 +92,42 @@ message JoinNetworkResponse {
                      // invite token) — cidr/members/invite_token are
                      // meaningless when this is set
 }
+
+// RegisterPairingCodeRequest asks the server to mint a short, human-typeable
+// code that resolves to the caller's own peer ID for a limited time — lets
+// a counterpart address the caller without already knowing its full peer
+// ID out of band (see cli's single-command connect flow).
+message RegisterPairingCodeRequest {
+  bytes public_key = 1;
+}
+
+message RegisterPairingCodeResponse {
+  string code = 1;
+}
+
+// ResolvePairingCodeRequest looks up which peer ID a pairing code refers
+// to, and simultaneously tells the server "I am the one connecting" —
+// unblocking that code's registrant, who's parked in
+// AwaitPairingCodeUseRequest.
+message ResolvePairingCodeRequest {
+  string code = 1;
+  bytes public_key = 2; // the resolver's own identity key, passed on to
+                         // whoever is awaiting this code's use
+}
+
+message ResolvePairingCodeResponse {
+  string peer_id = 1; // empty + error set means the code doesn't exist or
+                       // has expired
+  string error = 2;
+}
+
+// AwaitPairingCodeUseRequest blocks server-side until code has been
+// resolved by a counterpart (see ResolvePairingCodeRequest), or the
+// stream's context is cancelled / the code expires.
+message AwaitPairingCodeUseRequest {
+  string code = 1;
+}
+
+message AwaitPairingCodeUseResponse {
+  string peer_id = 1; // the peer ID of whoever resolved the code
+}

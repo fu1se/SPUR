@@ -18,6 +18,9 @@ const (
 	// stream is a raw, unframed byte pipe — see RelayOpenRequest's doc.
 	MethodRelay
 	MethodJoinNetwork
+	MethodRegisterPairingCode
+	MethodResolvePairingCode
+	MethodAwaitPairingCodeUse
 )
 
 func WriteMethod(w io.Writer, m Method) error {

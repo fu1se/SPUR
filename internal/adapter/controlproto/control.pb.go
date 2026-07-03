@@ -649,6 +649,298 @@ func (x *JoinNetworkResponse) GetError() string {
 	return ""
 }
 
+// RegisterPairingCodeRequest asks the server to mint a short, human-typeable
+// code that resolves to the caller's own peer ID for a limited time — lets
+// a counterpart address the caller without already knowing its full peer
+// ID out of band (see cli's single-command connect flow).
+type RegisterPairingCodeRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	PublicKey     []byte                 `protobuf:"bytes,1,opt,name=public_key,json=publicKey,proto3" json:"public_key,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RegisterPairingCodeRequest) Reset() {
+	*x = RegisterPairingCodeRequest{}
+	mi := &file_control_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RegisterPairingCodeRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RegisterPairingCodeRequest) ProtoMessage() {}
+
+func (x *RegisterPairingCodeRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_control_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RegisterPairingCodeRequest.ProtoReflect.Descriptor instead.
+func (*RegisterPairingCodeRequest) Descriptor() ([]byte, []int) {
+	return file_control_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *RegisterPairingCodeRequest) GetPublicKey() []byte {
+	if x != nil {
+		return x.PublicKey
+	}
+	return nil
+}
+
+type RegisterPairingCodeResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Code          string                 `protobuf:"bytes,1,opt,name=code,proto3" json:"code,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RegisterPairingCodeResponse) Reset() {
+	*x = RegisterPairingCodeResponse{}
+	mi := &file_control_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RegisterPairingCodeResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RegisterPairingCodeResponse) ProtoMessage() {}
+
+func (x *RegisterPairingCodeResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_control_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RegisterPairingCodeResponse.ProtoReflect.Descriptor instead.
+func (*RegisterPairingCodeResponse) Descriptor() ([]byte, []int) {
+	return file_control_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *RegisterPairingCodeResponse) GetCode() string {
+	if x != nil {
+		return x.Code
+	}
+	return ""
+}
+
+// ResolvePairingCodeRequest looks up which peer ID a pairing code refers
+// to, and simultaneously tells the server "I am the one connecting" —
+// unblocking that code's registrant, who's parked in
+// AwaitPairingCodeUseRequest.
+type ResolvePairingCodeRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Code          string                 `protobuf:"bytes,1,opt,name=code,proto3" json:"code,omitempty"`
+	PublicKey     []byte                 `protobuf:"bytes,2,opt,name=public_key,json=publicKey,proto3" json:"public_key,omitempty"` // the resolver's own identity key, passed on to
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ResolvePairingCodeRequest) Reset() {
+	*x = ResolvePairingCodeRequest{}
+	mi := &file_control_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ResolvePairingCodeRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ResolvePairingCodeRequest) ProtoMessage() {}
+
+func (x *ResolvePairingCodeRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_control_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ResolvePairingCodeRequest.ProtoReflect.Descriptor instead.
+func (*ResolvePairingCodeRequest) Descriptor() ([]byte, []int) {
+	return file_control_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *ResolvePairingCodeRequest) GetCode() string {
+	if x != nil {
+		return x.Code
+	}
+	return ""
+}
+
+func (x *ResolvePairingCodeRequest) GetPublicKey() []byte {
+	if x != nil {
+		return x.PublicKey
+	}
+	return nil
+}
+
+type ResolvePairingCodeResponse struct {
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	PeerId string                 `protobuf:"bytes,1,opt,name=peer_id,json=peerId,proto3" json:"peer_id,omitempty"` // empty + error set means the code doesn't exist or
+	// has expired
+	Error         string `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ResolvePairingCodeResponse) Reset() {
+	*x = ResolvePairingCodeResponse{}
+	mi := &file_control_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ResolvePairingCodeResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ResolvePairingCodeResponse) ProtoMessage() {}
+
+func (x *ResolvePairingCodeResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_control_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ResolvePairingCodeResponse.ProtoReflect.Descriptor instead.
+func (*ResolvePairingCodeResponse) Descriptor() ([]byte, []int) {
+	return file_control_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *ResolvePairingCodeResponse) GetPeerId() string {
+	if x != nil {
+		return x.PeerId
+	}
+	return ""
+}
+
+func (x *ResolvePairingCodeResponse) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
+// AwaitPairingCodeUseRequest blocks server-side until code has been
+// resolved by a counterpart (see ResolvePairingCodeRequest), or the
+// stream's context is cancelled / the code expires.
+type AwaitPairingCodeUseRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Code          string                 `protobuf:"bytes,1,opt,name=code,proto3" json:"code,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AwaitPairingCodeUseRequest) Reset() {
+	*x = AwaitPairingCodeUseRequest{}
+	mi := &file_control_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AwaitPairingCodeUseRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AwaitPairingCodeUseRequest) ProtoMessage() {}
+
+func (x *AwaitPairingCodeUseRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_control_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AwaitPairingCodeUseRequest.ProtoReflect.Descriptor instead.
+func (*AwaitPairingCodeUseRequest) Descriptor() ([]byte, []int) {
+	return file_control_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *AwaitPairingCodeUseRequest) GetCode() string {
+	if x != nil {
+		return x.Code
+	}
+	return ""
+}
+
+type AwaitPairingCodeUseResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	PeerId        string                 `protobuf:"bytes,1,opt,name=peer_id,json=peerId,proto3" json:"peer_id,omitempty"` // the peer ID of whoever resolved the code
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AwaitPairingCodeUseResponse) Reset() {
+	*x = AwaitPairingCodeUseResponse{}
+	mi := &file_control_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AwaitPairingCodeUseResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AwaitPairingCodeUseResponse) ProtoMessage() {}
+
+func (x *AwaitPairingCodeUseResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_control_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AwaitPairingCodeUseResponse.ProtoReflect.Descriptor instead.
+func (*AwaitPairingCodeUseResponse) Descriptor() ([]byte, []int) {
+	return file_control_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *AwaitPairingCodeUseResponse) GetPeerId() string {
+	if x != nil {
+		return x.PeerId
+	}
+	return ""
+}
+
 var File_control_proto protoreflect.FileDescriptor
 
 const file_control_proto_rawDesc = "" +
@@ -704,7 +996,23 @@ const file_control_proto_rawDesc = "" +
 	"\x04cidr\x18\x01 \x01(\tR\x04cidr\x120\n" +
 	"\amembers\x18\x02 \x03(\v2\x16.control.v1.MeshMemberR\amembers\x12!\n" +
 	"\finvite_token\x18\x03 \x01(\tR\vinviteToken\x12\x14\n" +
-	"\x05error\x18\x04 \x01(\tR\x05errorB5Z3github.com/fu1se/spur/internal/adapter/controlprotob\x06proto3"
+	"\x05error\x18\x04 \x01(\tR\x05error\";\n" +
+	"\x1aRegisterPairingCodeRequest\x12\x1d\n" +
+	"\n" +
+	"public_key\x18\x01 \x01(\fR\tpublicKey\"1\n" +
+	"\x1bRegisterPairingCodeResponse\x12\x12\n" +
+	"\x04code\x18\x01 \x01(\tR\x04code\"N\n" +
+	"\x19ResolvePairingCodeRequest\x12\x12\n" +
+	"\x04code\x18\x01 \x01(\tR\x04code\x12\x1d\n" +
+	"\n" +
+	"public_key\x18\x02 \x01(\fR\tpublicKey\"K\n" +
+	"\x1aResolvePairingCodeResponse\x12\x17\n" +
+	"\apeer_id\x18\x01 \x01(\tR\x06peerId\x12\x14\n" +
+	"\x05error\x18\x02 \x01(\tR\x05error\"0\n" +
+	"\x1aAwaitPairingCodeUseRequest\x12\x12\n" +
+	"\x04code\x18\x01 \x01(\tR\x04code\"6\n" +
+	"\x1bAwaitPairingCodeUseResponse\x12\x17\n" +
+	"\apeer_id\x18\x01 \x01(\tR\x06peerIdB5Z3github.com/fu1se/spur/internal/adapter/controlprotob\x06proto3"
 
 var (
 	file_control_proto_rawDescOnce sync.Once
@@ -718,19 +1026,25 @@ func file_control_proto_rawDescGZIP() []byte {
 	return file_control_proto_rawDescData
 }
 
-var file_control_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
+var file_control_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
 var file_control_proto_goTypes = []any{
-	(*RegisterRequest)(nil),           // 0: control.v1.RegisterRequest
-	(*RegisterResponse)(nil),          // 1: control.v1.RegisterResponse
-	(*Candidate)(nil),                 // 2: control.v1.Candidate
-	(*PublishCandidatesRequest)(nil),  // 3: control.v1.PublishCandidatesRequest
-	(*PublishCandidatesResponse)(nil), // 4: control.v1.PublishCandidatesResponse
-	(*AwaitCandidatesRequest)(nil),    // 5: control.v1.AwaitCandidatesRequest
-	(*AwaitCandidatesResponse)(nil),   // 6: control.v1.AwaitCandidatesResponse
-	(*RelayOpenRequest)(nil),          // 7: control.v1.RelayOpenRequest
-	(*MeshMember)(nil),                // 8: control.v1.MeshMember
-	(*JoinNetworkRequest)(nil),        // 9: control.v1.JoinNetworkRequest
-	(*JoinNetworkResponse)(nil),       // 10: control.v1.JoinNetworkResponse
+	(*RegisterRequest)(nil),             // 0: control.v1.RegisterRequest
+	(*RegisterResponse)(nil),            // 1: control.v1.RegisterResponse
+	(*Candidate)(nil),                   // 2: control.v1.Candidate
+	(*PublishCandidatesRequest)(nil),    // 3: control.v1.PublishCandidatesRequest
+	(*PublishCandidatesResponse)(nil),   // 4: control.v1.PublishCandidatesResponse
+	(*AwaitCandidatesRequest)(nil),      // 5: control.v1.AwaitCandidatesRequest
+	(*AwaitCandidatesResponse)(nil),     // 6: control.v1.AwaitCandidatesResponse
+	(*RelayOpenRequest)(nil),            // 7: control.v1.RelayOpenRequest
+	(*MeshMember)(nil),                  // 8: control.v1.MeshMember
+	(*JoinNetworkRequest)(nil),          // 9: control.v1.JoinNetworkRequest
+	(*JoinNetworkResponse)(nil),         // 10: control.v1.JoinNetworkResponse
+	(*RegisterPairingCodeRequest)(nil),  // 11: control.v1.RegisterPairingCodeRequest
+	(*RegisterPairingCodeResponse)(nil), // 12: control.v1.RegisterPairingCodeResponse
+	(*ResolvePairingCodeRequest)(nil),   // 13: control.v1.ResolvePairingCodeRequest
+	(*ResolvePairingCodeResponse)(nil),  // 14: control.v1.ResolvePairingCodeResponse
+	(*AwaitPairingCodeUseRequest)(nil),  // 15: control.v1.AwaitPairingCodeUseRequest
+	(*AwaitPairingCodeUseResponse)(nil), // 16: control.v1.AwaitPairingCodeUseResponse
 }
 var file_control_proto_depIdxs = []int32{
 	2, // 0: control.v1.PublishCandidatesRequest.candidates:type_name -> control.v1.Candidate
@@ -754,7 +1068,7 @@ func file_control_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_control_proto_rawDesc), len(file_control_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   11,
+			NumMessages:   17,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

@@ -78,15 +78,16 @@ type ClientDependencies struct {
 	// infra.LoadOrCreateIdentity — without persistence across restarts,
 	// the two ends could never learn each other's ID before it changed
 	// again). onSelfID is called with the caller's own peer ID as soon as
-	// it's known, before Connect starts blocking. Blocks until ctx is
-	// cancelled or forwarding fails.
-	Connect func(ctx context.Context, serverAddr, stunAddr, peerID, identityPath string, localPort int, onSelfID func(selfID string)) error
+	// it's known, before Connect starts blocking. peerID may be empty —
+	// see OnCodeFunc for what that means. Blocks until ctx is cancelled
+	// or forwarding fails.
+	Connect func(ctx context.Context, serverAddr, stunAddr, peerID, identityPath string, localPort int, onSelfID func(selfID string), onCode OnCodeFunc) error
 
 	// Expose is "spur expose": rendezvous with peerID, establish a P2P or
 	// relay session, and dial targetPort locally for every incoming
-	// tunnel stream. identityPath, onSelfID: see Connect. Blocks until
-	// ctx is cancelled or serving fails.
-	Expose func(ctx context.Context, serverAddr, stunAddr, peerID, identityPath string, targetPort int, onSelfID func(selfID string)) error
+	// tunnel stream. identityPath, onSelfID, peerID, onCode: see Connect.
+	// Blocks until ctx is cancelled or serving fails.
+	Expose func(ctx context.Context, serverAddr, stunAddr, peerID, identityPath string, targetPort int, onSelfID func(selfID string), onCode OnCodeFunc) error
 
 	// Whoami loads (or creates) the local identity and returns its peer
 	// ID, without any network access — the bootstrap step for learning
@@ -110,18 +111,29 @@ type ClientDependencies struct {
 
 	// Send is "spur send": rendezvous with peerID and stream path (a file
 	// or a directory, walked recursively) through the tunnel to whoever
-	// runs "spur receive" against the same peerID. identityPath, onSelfID:
-	// see Connect. onProgress: see ProgressFunc. Blocks until the transfer
-	// finishes or fails.
-	Send func(ctx context.Context, serverAddr, stunAddr, peerID, identityPath, path string, onSelfID func(selfID string), onProgress ProgressFunc) error
+	// runs "spur receive" against the same peerID. identityPath, onSelfID,
+	// peerID, onCode: see Connect. onProgress: see ProgressFunc. Blocks
+	// until the transfer finishes or fails.
+	Send func(ctx context.Context, serverAddr, stunAddr, peerID, identityPath, path string, onSelfID func(selfID string), onProgress ProgressFunc, onCode OnCodeFunc) error
 
 	// Receive is "spur receive": rendezvous with peerID and write whatever
 	// "spur send" streams through the tunnel under destDir, recreating the
 	// relative directory structure the sender walked. identityPath,
-	// onSelfID: see Connect. onProgress: see ProgressFunc. Blocks until
-	// the transfer finishes or fails.
-	Receive func(ctx context.Context, serverAddr, stunAddr, peerID, identityPath, destDir string, onSelfID func(selfID string), onProgress ProgressFunc) error
+	// onSelfID, peerID, onCode: see Connect. onProgress: see ProgressFunc.
+	// Blocks until the transfer finishes or fails.
+	Receive func(ctx context.Context, serverAddr, stunAddr, peerID, identityPath, destDir string, onSelfID func(selfID string), onProgress ProgressFunc, onCode OnCodeFunc) error
 }
+
+// OnCodeFunc is called with a freshly minted pairing code when the
+// corresponding peerID argument was left empty — "host" mode of the
+// single-command connect flow (see cmd/spur/tunnel.go's
+// counterpartResolverFor): instead of already knowing who they're
+// talking to, the caller registers a short code with the server and
+// waits for a counterpart to use it (invoking a matching command with
+// that code as its own peerID argument). nil is valid and means "don't
+// report" — same nil-safe-callback pattern as ProgressFunc/
+// controlserver.Server.Logger.
+type OnCodeFunc func(code string)
 
 // ProgressFunc reports incremental progress during a file transfer:
 // relPath is the file currently in flight, fileDone/fileTotal describe

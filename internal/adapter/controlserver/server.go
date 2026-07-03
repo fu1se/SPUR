@@ -44,11 +44,14 @@ const maxConcurrentStreams = 1024
 
 // Server serves the control-plane protocol over QUIC.
 type Server struct {
-	RegisterPeer      usecase.RegisterPeer
-	PublishCandidates usecase.PublishCandidates
-	AwaitCandidates   usecase.AwaitCandidates
-	RelayFallback     usecase.RelayFallback
-	JoinNetwork       usecase.JoinNetwork
+	RegisterPeer        usecase.RegisterPeer
+	PublishCandidates   usecase.PublishCandidates
+	AwaitCandidates     usecase.AwaitCandidates
+	RelayFallback       usecase.RelayFallback
+	JoinNetwork         usecase.JoinNetwork
+	RegisterPairingCode usecase.RegisterPairingCode
+	ResolvePairingCode  usecase.ResolvePairingCode
+	AwaitPairingCodeUse usecase.AwaitPairingCodeUse
 
 	// Logger receives operational events (connections, per-RPC errors).
 	// Every request handler used to drop its errors silently — an
@@ -144,9 +147,14 @@ func (s *Server) handleStream(ctx context.Context, conn *quic.Conn, stream *quic
 	}
 
 	reqCtx := ctx
-	if method == controlproto.MethodAwaitCandidates {
+	switch method {
+	case controlproto.MethodAwaitCandidates:
 		var cancel context.CancelFunc
 		reqCtx, cancel = context.WithTimeout(ctx, awaitCandidatesTimeout)
+		defer cancel()
+	case controlproto.MethodAwaitPairingCodeUse:
+		var cancel context.CancelFunc
+		reqCtx, cancel = context.WithTimeout(ctx, usecase.PairingCodeTTL)
 		defer cancel()
 	}
 
@@ -161,6 +169,12 @@ func (s *Server) handleStream(ctx context.Context, conn *quic.Conn, stream *quic
 		s.handleRelay(reqCtx, stream)
 	case controlproto.MethodJoinNetwork:
 		s.handleJoinNetwork(reqCtx, stream)
+	case controlproto.MethodRegisterPairingCode:
+		s.handleRegisterPairingCode(reqCtx, stream)
+	case controlproto.MethodResolvePairingCode:
+		s.handleResolvePairingCode(reqCtx, stream)
+	case controlproto.MethodAwaitPairingCodeUse:
+		s.handleAwaitPairingCodeUse(reqCtx, stream)
 	default:
 		s.log().Warn().Str("remote", conn.RemoteAddr().String()).Interface("method", method).Msg("unknown method")
 	}

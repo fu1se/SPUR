@@ -119,13 +119,17 @@ func runServer(ctx context.Context, controlAddr, stunAddr, dbPath string, verbos
 	networks := sqlite.NewNetworkRepository(db)
 	candidateBroker := memory.NewCandidateBroker()
 	relayBroker := memory.NewRelayBroker()
+	pairingCodeBroker := memory.NewPairingCodeBroker()
 	srv := &controlserver.Server{
-		RegisterPeer:      usecase.RegisterPeer{Peers: peers},
-		PublishCandidates: usecase.PublishCandidates{Store: candidateBroker},
-		AwaitCandidates:   usecase.AwaitCandidates{Store: candidateBroker},
-		RelayFallback:     usecase.RelayFallback{Broker: relayBroker},
-		JoinNetwork:       usecase.JoinNetwork{Networks: networks},
-		Logger:            &logger,
+		RegisterPeer:        usecase.RegisterPeer{Peers: peers},
+		PublishCandidates:   usecase.PublishCandidates{Store: candidateBroker},
+		AwaitCandidates:     usecase.AwaitCandidates{Store: candidateBroker},
+		RelayFallback:       usecase.RelayFallback{Broker: relayBroker},
+		JoinNetwork:         usecase.JoinNetwork{Networks: networks},
+		RegisterPairingCode: usecase.RegisterPairingCode{Store: pairingCodeBroker},
+		ResolvePairingCode:  usecase.ResolvePairingCode{Store: pairingCodeBroker},
+		AwaitPairingCodeUse: usecase.AwaitPairingCodeUse{Store: pairingCodeBroker},
+		Logger:              &logger,
 	}
 
 	g, gctx := errgroup.WithContext(ctx)

@@ -197,7 +197,7 @@ func (m *meshPeers) reapDeadConnection(peer domain.PeerID) bool {
 }
 
 func (m *meshPeers) connectOne(ctx context.Context, mem domain.MeshMember) {
-	tun, _, err := rendezvous(ctx, m.serverAddr, m.stunAddr, m.identityPath, mem.PeerID, func(string) {})
+	tun, _, _, err := rendezvous(ctx, m.serverAddr, m.stunAddr, m.identityPath, fixedCounterpart(mem.PeerID), func(string) {})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "spur: mesh: rendezvous with %s failed: %v\n", mem.PeerID, err)
 		return
