@@ -111,15 +111,28 @@ type ClientDependencies struct {
 	// Send is "spur send": rendezvous with peerID and stream path (a file
 	// or a directory, walked recursively) through the tunnel to whoever
 	// runs "spur receive" against the same peerID. identityPath, onSelfID:
-	// see Connect. Blocks until the transfer finishes or fails.
-	Send func(ctx context.Context, serverAddr, stunAddr, peerID, identityPath, path string, onSelfID func(selfID string)) error
+	// see Connect. onProgress: see ProgressFunc. Blocks until the transfer
+	// finishes or fails.
+	Send func(ctx context.Context, serverAddr, stunAddr, peerID, identityPath, path string, onSelfID func(selfID string), onProgress ProgressFunc) error
 
 	// Receive is "spur receive": rendezvous with peerID and write whatever
 	// "spur send" streams through the tunnel under destDir, recreating the
 	// relative directory structure the sender walked. identityPath,
-	// onSelfID: see Connect. Blocks until the transfer finishes or fails.
-	Receive func(ctx context.Context, serverAddr, stunAddr, peerID, identityPath, destDir string, onSelfID func(selfID string)) error
+	// onSelfID: see Connect. onProgress: see ProgressFunc. Blocks until
+	// the transfer finishes or fails.
+	Receive func(ctx context.Context, serverAddr, stunAddr, peerID, identityPath, destDir string, onSelfID func(selfID string), onProgress ProgressFunc) error
 }
+
+// ProgressFunc reports incremental progress during a file transfer:
+// relPath is the file currently in flight, fileDone/fileTotal describe
+// just that file, overallDone/overallTotal the whole transfer.
+// overallTotal is 0 when unknown (the receiving side never sees the
+// sender's full manifest up front — see usecase.TransferProgress's doc
+// comment for why). This mirrors that usecase-layer type's shape rather
+// than importing it directly, same reason RegisterResult/JoinNetworkResult
+// are cli's own mirror types instead of aliases onto domain/controlclient
+// types — cli must not depend on usecase.
+type ProgressFunc func(relPath string, fileDone, fileTotal, overallDone, overallTotal int64)
 
 // ServerDependencies holds the wired entrypoint the server binary's root
 // command calls into.

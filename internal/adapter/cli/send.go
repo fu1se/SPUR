@@ -22,9 +22,11 @@ func newSendCommand(deps ClientDependencies, defaults ClientDefaults) *cobra.Com
 			if serverAddr == "" || stunAddr == "" || peerID == "" {
 				return errors.New("send: укажите --server, --stun-server и --to")
 			}
-			return deps.Send(cmd.Context(), serverAddr, stunAddr, peerID, identityPath, args[0], func(selfID string) {
+			err := deps.Send(cmd.Context(), serverAddr, stunAddr, peerID, identityPath, args[0], func(selfID string) {
 				cmd.Printf("свой peer-id: %s\n", selfID)
-			})
+			}, newProgressPrinter(cmd.ErrOrStderr(), "отправка"))
+			progressDone(cmd.ErrOrStderr())
+			return err
 		},
 	}
 

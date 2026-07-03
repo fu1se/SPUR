@@ -221,7 +221,12 @@ spur send --server SERVER:4443 --stun-server SERVER:4444 \
 ```
 
 Both commands exit with code `0` once everything has been transferred
-and acknowledged by the receiving side.
+and acknowledged by the receiving side. Both also print a live-updating
+progress line to stderr while transferring — current file, percentage,
+transfer speed, and overall bytes moved (the sender additionally knows
+and shows an overall percentage; the receiver doesn't know the total
+size of what's coming until it's done, so it only shows a running byte
+count).
 
 ## Config file
 

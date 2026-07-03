@@ -17,6 +17,10 @@ import (
 type SendFiles struct {
 	Source port.FileSource
 	Tunnel port.TunnelConn
+
+	// OnProgress, if set, is called as bytes are sent — see
+	// TransferProgress's doc comment.
+	OnProgress TransferProgress
 }
 
 // Run blocks until every file has been sent, acknowledged by the
@@ -50,6 +54,12 @@ func (uc SendFiles) Run(ctx context.Context) error {
 		return fmt.Errorf("usecase: list files: %w", err)
 	}
 
+	var overallTotal int64
+	for _, entry := range entries {
+		overallTotal += entry.Size
+	}
+
+	var overallDone int64
 	for _, entry := range entries {
 		if err := writeFileHeader(stream, entry); err != nil {
 			return err
@@ -59,7 +69,12 @@ func (uc SendFiles) Run(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("usecase: open %s: %w", entry.RelPath, err)
 		}
-		_, err = io.CopyN(stream, r, entry.Size)
+		entryStart := overallDone
+		err = copyWithProgress(stream, r, entry.Size, func(fileDone int64) {
+			if uc.OnProgress != nil {
+				uc.OnProgress(entry.RelPath, fileDone, entry.Size, entryStart+fileDone, overallTotal)
+			}
+		})
 		closeErr := r.Close()
 		if err != nil {
 			return fmt.Errorf("usecase: send %s: %w", entry.RelPath, err)
@@ -67,6 +82,7 @@ func (uc SendFiles) Run(ctx context.Context) error {
 		if closeErr != nil {
 			return fmt.Errorf("usecase: close %s: %w", entry.RelPath, closeErr)
 		}
+		overallDone += entry.Size
 	}
 
 	if err := writeEndMarker(stream); err != nil {

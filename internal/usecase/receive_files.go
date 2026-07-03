@@ -3,7 +3,6 @@ package usecase
 import (
 	"context"
 	"fmt"
-	"io"
 
 	"github.com/fu1se/spur/internal/usecase/port"
 )
@@ -16,6 +15,11 @@ import (
 type ReceiveFiles struct {
 	Sink   port.FileSink
 	Tunnel port.TunnelConn
+
+	// OnProgress, if set, is called as bytes are received — see
+	// TransferProgress's doc comment. overallTotal is always 0 (unknown)
+	// for this side; see that doc comment for why.
+	OnProgress TransferProgress
 }
 
 // Run blocks until every file has been received, the sender signals the
@@ -27,6 +31,7 @@ func (uc ReceiveFiles) Run(ctx context.Context) error {
 	}
 	defer stream.Close()
 
+	var overallDone int64
 	for {
 		entry, end, err := readFileHeader(stream)
 		if err != nil {
@@ -54,7 +59,12 @@ func (uc ReceiveFiles) Run(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("usecase: create %s: %w", entry.RelPath, err)
 		}
-		_, err = io.CopyN(w, stream, entry.Size)
+		entryStart := overallDone
+		err = copyWithProgress(w, stream, entry.Size, func(fileDone int64) {
+			if uc.OnProgress != nil {
+				uc.OnProgress(entry.RelPath, fileDone, entry.Size, entryStart+fileDone, 0)
+			}
+		})
 		closeErr := w.Close()
 		if err != nil {
 			return fmt.Errorf("usecase: receive %s: %w", entry.RelPath, err)
@@ -62,5 +72,6 @@ func (uc ReceiveFiles) Run(ctx context.Context) error {
 		if closeErr != nil {
 			return fmt.Errorf("usecase: close %s: %w", entry.RelPath, closeErr)
 		}
+		overallDone += entry.Size
 	}
 }

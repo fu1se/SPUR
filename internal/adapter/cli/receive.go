@@ -22,9 +22,11 @@ func newReceiveCommand(deps ClientDependencies, defaults ClientDefaults) *cobra.
 			if serverAddr == "" || stunAddr == "" || peerID == "" || outDir == "" {
 				return errors.New("receive: укажите --server, --stun-server, --to и --out")
 			}
-			return deps.Receive(cmd.Context(), serverAddr, stunAddr, peerID, identityPath, outDir, func(selfID string) {
+			err := deps.Receive(cmd.Context(), serverAddr, stunAddr, peerID, identityPath, outDir, func(selfID string) {
 				cmd.Printf("свой peer-id: %s\n", selfID)
-			})
+			}, newProgressPrinter(cmd.ErrOrStderr(), "приём"))
+			progressDone(cmd.ErrOrStderr())
+			return err
 		},
 	}
 
