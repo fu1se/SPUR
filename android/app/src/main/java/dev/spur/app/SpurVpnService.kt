@@ -72,7 +72,23 @@ class SpurVpnService : VpnService() {
                 stopSelf()
             }
         }
-        return START_STICKY
+        // START_REDELIVER_INTENT, not START_STICKY: *if* the system ever
+        // restarts this service after the process dies, STICKY redelivers
+        // a null Intent (no extras) — which used to hit the null-check
+        // above and immediately stopSelf() again, permanently ending the
+        // session on what should have been a transient restart.
+        // REDELIVER_INTENT replays this exact Intent (server/stun/network/
+        // invite extras intact) instead, so a restart can actually rejoin
+        // rather than self-destruct on arrival. Not fully verified live:
+        // a `kill -9` against this emulator did not trigger an automatic
+        // restart within several minutes either way (with STICKY or
+        // REDELIVER_INTENT) — no am_schedule_service_restart logged, so
+        // whether Android restarts a killed VpnService process at all in
+        // practice is still an open question here, separate from this
+        // fix. REDELIVER_INTENT is still strictly safer than STICKY for
+        // the case where a restart does happen — it can only help, and
+        // definitely closes the self-inflicted null-Intent bug above.
+        return START_REDELIVER_INTENT
     }
 
     override fun onRevoke() {
