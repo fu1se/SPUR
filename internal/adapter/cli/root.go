@@ -128,10 +128,14 @@ type ClientDependencies struct {
 	// Join is "spur join": full mesh VPN mode — join the network, tunnel
 	// to every other member, and route traffic through a real TUN
 	// interface. Requires elevated privileges (root/CAP_NET_ADMIN on
-	// Linux). inviteToken: see JoinNetwork. onSelfID: see Connect.
-	// onVersionMismatch: see VersionMismatchFunc. Blocks until ctx is
-	// cancelled.
-	Join func(ctx context.Context, serverAddr, stunAddr, networkName, inviteToken, identityPath string, onSelfID func(selfID string), onVersionMismatch VersionMismatchFunc) error
+	// Linux). inviteToken: see JoinNetwork. verbose switches the
+	// WireGuard device's own logger from Error to Verbose (handshake
+	// init/complete, peer add/remove) — off by default since it's noisy
+	// on every routine handshake, but the only way to see whether a
+	// stuck peer ever gets as far as attempting one at all. onSelfID:
+	// see Connect. onVersionMismatch: see VersionMismatchFunc. Blocks
+	// until ctx is cancelled.
+	Join func(ctx context.Context, serverAddr, stunAddr, networkName, inviteToken, identityPath string, verbose bool, onSelfID func(selfID string), onVersionMismatch VersionMismatchFunc) error
 
 	// CreateRoom is "spur room create": creates a brand-new, persistent,
 	// two-member room named roomName on the server with the caller as its

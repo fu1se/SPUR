@@ -53,6 +53,7 @@ type catalog struct {
 	FlagRendezvousCoordSrv string
 	FlagNetwork            string
 	FlagMeshInvite         string
+	FlagJoinVerbose        string
 
 	// join_network.go
 	JoinNetworkShort         string
@@ -191,6 +192,7 @@ var ruCatalog = catalog{
 	FlagRendezvousCoordSrv: "адрес rendezvous/coordination-сервера",
 	FlagNetwork:            "имя mesh-сети",
 	FlagMeshInvite:         "инвайт-токен сети (не нужен при создании новой сети или повторном join)",
+	FlagJoinVerbose:        "подробный лог WireGuard-устройства (handshake, добавление/удаление пиров) — по умолчанию только ошибки",
 
 	JoinNetworkShort:         "Присоединиться к mesh-сети на сервере и показать её участников (без TUN)",
 	JoinNetworkMissingFlags:  "join-network: укажите --server и --network",
@@ -318,6 +320,7 @@ var enCatalog = catalog{
 	FlagRendezvousCoordSrv: "rendezvous/coordination server address",
 	FlagNetwork:            "mesh network name",
 	FlagMeshInvite:         "network invite token (not needed to create a new network or rejoin)",
+	FlagJoinVerbose:        "verbose WireGuard device logging (handshakes, peer add/remove) — errors only by default",
 
 	JoinNetworkShort:         "Join a mesh network on the server and show its members (no TUN)",
 	JoinNetworkMissingFlags:  "join-network: specify --server and --network",

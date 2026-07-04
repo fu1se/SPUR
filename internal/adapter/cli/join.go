@@ -13,6 +13,7 @@ func newJoinCommand(deps ClientDependencies, defaults ClientDefaults) *cobra.Com
 		network      string
 		inviteToken  string
 		identityPath = defaults.Identity
+		verbose      bool
 	)
 
 	cmd := &cobra.Command{
@@ -22,7 +23,7 @@ func newJoinCommand(deps ClientDependencies, defaults ClientDefaults) *cobra.Com
 			if serverAddr == "" || stunAddr == "" || network == "" {
 				return errors.New(msg().JoinMissingFlags)
 			}
-			return deps.Join(cmd.Context(), serverAddr, stunAddr, network, inviteToken, identityPath, func(selfID string) {
+			return deps.Join(cmd.Context(), serverAddr, stunAddr, network, inviteToken, identityPath, verbose, func(selfID string) {
 				cmd.Printf(msg().SelfIDPrinted, selfID)
 			}, newVersionWarningPrinter(cmd))
 		},
@@ -33,6 +34,7 @@ func newJoinCommand(deps ClientDependencies, defaults ClientDefaults) *cobra.Com
 	cmd.Flags().StringVar(&network, "network", "", msg().FlagNetwork)
 	cmd.Flags().StringVar(&inviteToken, "invite", "", msg().FlagMeshInvite)
 	cmd.Flags().StringVar(&identityPath, "identity", identityPath, msg().FlagIdentity)
+	cmd.Flags().BoolVar(&verbose, "verbose", false, msg().FlagJoinVerbose)
 
 	return cmd
 }

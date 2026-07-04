@@ -46,7 +46,7 @@ const meshRefreshInterval = 5 * time.Second
 // state. The per-peer tunnel orchestration itself (meshclient.Peers) is
 // shared with the Android facade (android/spurmobile) — only TUN
 // creation differs, see wgmesh.NewDevice vs NewDeviceFromFD.
-func join(ctx context.Context, serverAddr, stunAddr, networkName, inviteToken, identityPath string, onSelfID func(string), onVersionMismatch cli.VersionMismatchFunc) error {
+func join(ctx context.Context, serverAddr, stunAddr, networkName, inviteToken, identityPath string, verbose bool, onSelfID func(string), onVersionMismatch cli.VersionMismatchFunc) error {
 	resolvedIdentityPath, err := rendezvous.ResolveIdentityPath(identityPath)
 	if err != nil {
 		return err
@@ -85,7 +85,11 @@ func join(ctx context.Context, serverAddr, stunAddr, networkName, inviteToken, i
 	}
 
 	bind := wgmesh.NewBind()
-	logger := device.NewLogger(device.LogLevelError, "spur: ")
+	logLevel := device.LogLevelError
+	if verbose {
+		logLevel = device.LogLevelVerbose
+	}
+	logger := device.NewLogger(logLevel, "spur: ")
 	dev, err := wgmesh.NewDevice(bind, selfMeshIP, network.CIDR.Bits(), logger)
 	if err != nil {
 		return fmt.Errorf("app: create tun device: %w", err)
