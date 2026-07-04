@@ -18,7 +18,17 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
+            // No release keystore exists yet — debug signing is a stand-in
+            // just so `assembleRelease` produces an installable APK to
+            // verify R8 + the gomobile keep rules above actually work
+            // together on a device, not a real distribution signature.
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
 
