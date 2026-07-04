@@ -6,6 +6,7 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/fu1se/spur/internal/adapter/cli"
@@ -18,35 +19,37 @@ import (
 // ephemeral-key registration purely to check the server address is
 // reachable, before committing to a real rendezvous elsewhere in the UI.
 func (g *guiApp) buildIdentityTab() fyne.CanvasObject {
-	selfIDLabel := widget.NewLabel(g.client.SelfID())
+	// Monospace, like Android's CopyableValue: makes look-alike
+	// characters (0/O, 1/l) in the peer-id distinguishable.
+	selfIDLabel := widget.NewLabelWithStyle(g.client.SelfID(), fyne.TextAlignLeading, fyne.TextStyle{Monospace: true})
 	selfIDLabel.Wrapping = fyne.TextWrapBreak
 
-	copyStatus := widget.NewLabel("")
-	copyBtn := widget.NewButton(g.cat.IdentityCopy, func() {
+	copyStatus := newStatusLabel("")
+	copyBtn := widget.NewButtonWithIcon(g.cat.IdentityCopy, theme.ContentCopyIcon(), func() {
 		g.app.Clipboard().SetContent(g.client.SelfID())
-		copyStatus.SetText(g.cat.IdentityCopied)
+		setStatus(copyStatus, g.cat.IdentityCopied)
 	})
 
-	testStatus := widget.NewLabel("")
-	testBtn := widget.NewButton(g.cat.IdentityTestButton, nil)
+	testStatus := newStatusLabel("")
+	testBtn := widget.NewButtonWithIcon(g.cat.IdentityTestButton, theme.ViewRefreshIcon(), nil)
 	testBtn.OnTapped = func() {
 		testBtn.Disable()
-		testStatus.SetText(g.cat.IdentityTestRunning)
+		setStatus(testStatus, g.cat.IdentityTestRunning)
 		serverAddr := g.serverAddr()
 		go func() {
 			result, err := g.client.Register(context.Background(), serverAddr, g.onVersionMismatch)
 			fyne.Do(func() {
 				testBtn.Enable()
 				if err != nil {
-					testStatus.SetText(cli.Explain(err))
+					setStatus(testStatus, cli.Explain(err))
 					return
 				}
-				testStatus.SetText(fmt.Sprintf("%s %s (%s)", g.cat.IdentityTestOK, result.PeerID, result.ObservedAddress))
+				setStatus(testStatus, fmt.Sprintf("%s %s (%s)", g.cat.IdentityTestOK, result.PeerID, result.ObservedAddress))
 			})
 		}()
 	}
 
-	saveBtn := widget.NewButton(g.cat.SettingsSave, g.saveSettings)
+	saveBtn := widget.NewButtonWithIcon(g.cat.SettingsSave, theme.DocumentSaveIcon(), g.saveSettings)
 
 	form := container.NewVBox(
 		widget.NewLabel(g.cat.IdentitySelfID),
@@ -62,5 +65,5 @@ func (g *guiApp) buildIdentityTab() fyne.CanvasObject {
 		testBtn,
 		testStatus,
 	)
-	return container.NewVScroll(form)
+	return container.NewVScroll(container.NewPadded(widget.NewCard("", "", form)))
 }

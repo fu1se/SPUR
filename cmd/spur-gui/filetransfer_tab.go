@@ -9,6 +9,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/fu1se/spur/internal/adapter/cli"
@@ -39,7 +40,7 @@ func (g *guiApp) buildTransferTab() fyne.CanvasObject {
 	roomEntry.SetPlaceHolder(cat.PFRoomName)
 
 	pathEntry := widget.NewEntry()
-	chooseFileBtn := widget.NewButton(cat.FTChoosePath, func() {
+	chooseFileBtn := widget.NewButtonWithIcon(cat.FTChoosePath, theme.FileIcon(), func() {
 		dialog.ShowFileOpen(func(r fyne.URIReadCloser, err error) {
 			if err != nil || r == nil {
 				return
@@ -48,7 +49,7 @@ func (g *guiApp) buildTransferTab() fyne.CanvasObject {
 			pathEntry.SetText(r.URI().Path())
 		}, g.win)
 	})
-	chooseFolderBtn := widget.NewButton(cat.FTChooseFolder, func() {
+	chooseFolderBtn := widget.NewButtonWithIcon(cat.FTChooseFolder, theme.FolderOpenIcon(), func() {
 		dialog.ShowFolderOpen(func(u fyne.ListableURI, err error) {
 			if err != nil || u == nil {
 				return
@@ -57,17 +58,17 @@ func (g *guiApp) buildTransferTab() fyne.CanvasObject {
 		}, g.win)
 	})
 
-	codeLabel := widget.NewLabel("")
+	codeLabel := widget.NewLabelWithStyle("", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 	progressBar := widget.NewProgressBar()
-	statusLabel := widget.NewLabel(cat.FTStatusIdle)
-	statusLabel.Wrapping = fyne.TextWrapWord
+	statusLabel := newStatusLabel(cat.FTStatusIdle)
 
 	var active *guiapp.Transfer
 	var cancelEstablish context.CancelFunc
 
 	var startBtn, stopBtn *widget.Button
-	startBtn = widget.NewButton(cat.FTStart, nil)
-	stopBtn = widget.NewButton(cat.FTStop, nil)
+	startBtn = widget.NewButtonWithIcon(cat.FTStart, theme.MediaPlayIcon(), nil)
+	stopBtn = widget.NewButtonWithIcon(cat.FTStop, theme.MediaStopIcon(), nil)
+	stopBtn.Importance = widget.DangerImportance
 	stopBtn.Disable()
 
 	resetToIdle := func() {
@@ -80,13 +81,13 @@ func (g *guiApp) buildTransferTab() fyne.CanvasObject {
 	startBtn.OnTapped = func() {
 		path := pathEntry.Text
 		if path == "" {
-			statusLabel.SetText(fmt.Sprintf(cat.FTStatusFailed, "empty path"))
+			setStatus(statusLabel, fmt.Sprintf(cat.FTStatusFailed, "empty path"))
 			return
 		}
 		startBtn.Disable()
 		codeLabel.SetText("")
 		progressBar.SetValue(0)
-		statusLabel.SetText(cat.PFStatusEstablish)
+		setStatus(statusLabel, cat.PFStatusEstablish)
 
 		ctx, cancel := context.WithCancel(context.Background())
 		cancelEstablish = cancel
@@ -112,7 +113,7 @@ func (g *guiApp) buildTransferTab() fyne.CanvasObject {
 				if overallTotal > 0 {
 					progressBar.SetValue(float64(overallDone) / float64(overallTotal))
 				}
-				statusLabel.SetText(fmt.Sprintf(cat.FTStatusRunning, relPath, humanBytes(overallDone), humanBytes(overallTotal)))
+				setStatus(statusLabel, fmt.Sprintf(cat.FTStatusRunning, relPath, humanBytes(overallDone), humanBytes(overallTotal)))
 			})
 		}
 
@@ -136,7 +137,7 @@ func (g *guiApp) buildTransferTab() fyne.CanvasObject {
 			}
 			if err != nil {
 				fyne.Do(func() {
-					statusLabel.SetText(fmt.Sprintf(cat.FTStatusFailed, cli.Explain(err)))
+					setStatus(statusLabel, fmt.Sprintf(cat.FTStatusFailed, cli.Explain(err)))
 					resetToIdle()
 				})
 				return
@@ -151,12 +152,12 @@ func (g *guiApp) buildTransferTab() fyne.CanvasObject {
 			fyne.Do(func() {
 				switch {
 				case waitErr == nil:
-					statusLabel.SetText(cat.FTStatusDone)
+					setStatus(statusLabel, cat.FTStatusDone)
 					progressBar.SetValue(1)
 				case errors.Is(waitErr, context.Canceled):
-					statusLabel.SetText(cat.PFStatusStopped)
+					setStatus(statusLabel, cat.PFStatusStopped)
 				default:
-					statusLabel.SetText(fmt.Sprintf(cat.FTStatusFailed, cli.Explain(waitErr)))
+					setStatus(statusLabel, fmt.Sprintf(cat.FTStatusFailed, cli.Explain(waitErr)))
 				}
 				resetToIdle()
 			})
@@ -186,7 +187,7 @@ func (g *guiApp) buildTransferTab() fyne.CanvasObject {
 		progressBar,
 		statusLabel,
 	)
-	return container.NewVScroll(form)
+	return container.NewVScroll(container.NewPadded(widget.NewCard("", "", form)))
 }
 
 // humanBytes renders n as a short, human-scaled byte count (KB/MB/GB) —

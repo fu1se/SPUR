@@ -8,6 +8,7 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/fu1se/spur/internal/adapter/cli"
@@ -32,16 +33,16 @@ func (g *guiApp) buildPortForwardTab() fyne.CanvasObject {
 	portEntry := widget.NewEntry()
 	portEntry.SetText("2222")
 
-	codeLabel := widget.NewLabel("")
-	statusLabel := widget.NewLabel(cat.PFStatusIdle)
-	statusLabel.Wrapping = fyne.TextWrapWord
+	codeLabel := widget.NewLabelWithStyle("", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	statusLabel := newStatusLabel(cat.PFStatusIdle)
 
 	var active *guiapp.PortForward
 	var cancelEstablish context.CancelFunc
 
 	var startBtn, stopBtn *widget.Button
-	startBtn = widget.NewButton(cat.PFStart, nil)
-	stopBtn = widget.NewButton(cat.PFStop, nil)
+	startBtn = widget.NewButtonWithIcon(cat.PFStart, theme.MediaPlayIcon(), nil)
+	stopBtn = widget.NewButtonWithIcon(cat.PFStop, theme.MediaStopIcon(), nil)
+	stopBtn.Importance = widget.DangerImportance
 	stopBtn.Disable()
 
 	resetToIdle := func() {
@@ -54,12 +55,12 @@ func (g *guiApp) buildPortForwardTab() fyne.CanvasObject {
 	startBtn.OnTapped = func() {
 		port, err := strconv.Atoi(portEntry.Text)
 		if err != nil {
-			statusLabel.SetText(fmt.Sprintf(cat.PFStatusFailed, err))
+			setStatus(statusLabel, fmt.Sprintf(cat.PFStatusFailed, err))
 			return
 		}
 		startBtn.Disable()
 		codeLabel.SetText("")
-		statusLabel.SetText(cat.PFStatusEstablish)
+		setStatus(statusLabel, cat.PFStatusEstablish)
 
 		ctx, cancel := context.WithCancel(context.Background())
 		cancelEstablish = cancel
@@ -83,7 +84,7 @@ func (g *guiApp) buildPortForwardTab() fyne.CanvasObject {
 			}
 			if err != nil {
 				fyne.Do(func() {
-					statusLabel.SetText(fmt.Sprintf(cat.PFStatusFailed, cli.Explain(err)))
+					setStatus(statusLabel, fmt.Sprintf(cat.PFStatusFailed, cli.Explain(err)))
 					resetToIdle()
 				})
 				return
@@ -96,15 +97,15 @@ func (g *guiApp) buildPortForwardTab() fyne.CanvasObject {
 				if addr == "" {
 					addr = "-"
 				}
-				statusLabel.SetText(fmt.Sprintf(cat.PFStatusRunning, addr))
+				setStatus(statusLabel, fmt.Sprintf(cat.PFStatusRunning, addr))
 			})
 
 			waitErr := pf.Wait()
 			fyne.Do(func() {
 				if errors.Is(waitErr, context.Canceled) {
-					statusLabel.SetText(cat.PFStatusStopped)
+					setStatus(statusLabel, cat.PFStatusStopped)
 				} else {
-					statusLabel.SetText(fmt.Sprintf(cat.PFStatusFailed, cli.Explain(waitErr)))
+					setStatus(statusLabel, fmt.Sprintf(cat.PFStatusFailed, cli.Explain(waitErr)))
 				}
 				resetToIdle()
 			})
@@ -132,5 +133,5 @@ func (g *guiApp) buildPortForwardTab() fyne.CanvasObject {
 		codeLabel,
 		statusLabel,
 	)
-	return container.NewVScroll(form)
+	return container.NewVScroll(container.NewPadded(widget.NewCard("", "", form)))
 }

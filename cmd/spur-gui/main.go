@@ -13,6 +13,7 @@
 package main
 
 import (
+	_ "embed"
 	"fmt"
 	"os"
 
@@ -20,12 +21,21 @@ import (
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/fu1se/spur/internal/adapter/cli"
 	"github.com/fu1se/spur/internal/adapter/guiapp"
 	"github.com/fu1se/spur/internal/infra"
 )
+
+// appIconPNG is the same launcher icon the Android app ships (generated
+// from the product's actual logo.jpg — see CLAUDE.md's "GUI и иконка
+// приложения" note) — one visual identity across both clients instead of
+// Fyne's default placeholder icon.
+//
+//go:embed assets/icon.png
+var appIconPNG []byte
 
 // guiApp bundles the state every tab needs: the fyne window (for showing
 // dialogs), the loaded guiapp.Client (identity), the persisted config
@@ -68,7 +78,12 @@ func main() {
 	}
 
 	fyneApp := app.NewWithID("dev.spur.gui")
+	fyneApp.Settings().SetTheme(spurTheme{})
+	icon := fyne.NewStaticResource("icon.png", appIconPNG)
+	fyneApp.SetIcon(icon)
+
 	win := fyneApp.NewWindow(cat.WindowTitle)
+	win.SetIcon(icon)
 
 	g := &guiApp{
 		app:         fyneApp,
@@ -85,12 +100,18 @@ func main() {
 	g.stunEntry.SetText(cfg.StunServer)
 	g.stunEntry.SetPlaceHolder("host:4444")
 
+	// Icons mirror the Android app's SectionCard icons (Components.kt) as
+	// closely as Fyne's built-in theme icon set allows — Fyne has no
+	// direct equivalent of Material's Fingerprint/Router/FolderShared/
+	// MeetingRoom/Hub, so each is the closest available stand-in
+	// (Account for identity, Computer for port-forward, Folder for file
+	// transfer, Home for a room, Desktop for a multi-machine mesh).
 	tabs := container.NewAppTabs(
-		container.NewTabItem(cat.TabIdentity, g.buildIdentityTab()),
-		container.NewTabItem(cat.TabPortForward, g.buildPortForwardTab()),
-		container.NewTabItem(cat.TabTransfer, g.buildTransferTab()),
-		container.NewTabItem(cat.TabRooms, g.buildRoomsTab()),
-		container.NewTabItem(cat.TabMesh, g.buildMeshTab()),
+		container.NewTabItemWithIcon(cat.TabIdentity, theme.AccountIcon(), g.buildIdentityTab()),
+		container.NewTabItemWithIcon(cat.TabPortForward, theme.ComputerIcon(), g.buildPortForwardTab()),
+		container.NewTabItemWithIcon(cat.TabTransfer, theme.FolderIcon(), g.buildTransferTab()),
+		container.NewTabItemWithIcon(cat.TabRooms, theme.HomeIcon(), g.buildRoomsTab()),
+		container.NewTabItemWithIcon(cat.TabMesh, theme.DesktopIcon(), g.buildMeshTab()),
 	)
 	tabs.SetTabLocation(container.TabLocationTop)
 

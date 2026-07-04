@@ -8,6 +8,7 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/fu1se/spur/internal/adapter/cli"
@@ -27,16 +28,16 @@ func (g *guiApp) buildMeshTab() fyne.CanvasObject {
 	tokenEntry.SetPlaceHolder(cat.MeshInviteToken)
 	verboseCheck := widget.NewCheck(cat.MeshVerbose, nil)
 
-	statusLabel := widget.NewLabel(cat.MeshStatusIdle)
-	statusLabel.Wrapping = fyne.TextWrapWord
+	statusLabel := newStatusLabel(cat.MeshStatusIdle)
 	membersLabel := widget.NewLabel("")
 	membersLabel.Wrapping = fyne.TextWrapWord
 
 	var active *guiapp.MeshSession
 
 	var joinBtn, leaveBtn *widget.Button
-	joinBtn = widget.NewButton(cat.MeshJoin, nil)
-	leaveBtn = widget.NewButton(cat.MeshLeave, nil)
+	joinBtn = widget.NewButtonWithIcon(cat.MeshJoin, theme.LoginIcon(), nil)
+	leaveBtn = widget.NewButtonWithIcon(cat.MeshLeave, theme.LogoutIcon(), nil)
+	leaveBtn.Importance = widget.DangerImportance
 	leaveBtn.Disable()
 
 	joinBtn.OnTapped = func() {
@@ -45,7 +46,7 @@ func (g *guiApp) buildMeshTab() fyne.CanvasObject {
 			return
 		}
 		joinBtn.Disable()
-		statusLabel.SetText(cat.PFStatusEstablish)
+		setStatus(statusLabel, cat.PFStatusEstablish)
 		membersLabel.SetText("")
 
 		serverAddr, stunAddr := g.serverAddr(), g.stunAddr()
@@ -74,7 +75,7 @@ func (g *guiApp) buildMeshTab() fyne.CanvasObject {
 			session, err := g.client.StartMesh(context.Background(), serverAddr, stunAddr, name, token, verbose, func(string) {}, g.onVersionMismatch)
 			if err != nil {
 				fyne.Do(func() {
-					statusLabel.SetText(fmt.Sprintf(cat.MeshStatusFailed, cli.Explain(err)))
+					setStatus(statusLabel, fmt.Sprintf(cat.MeshStatusFailed, cli.Explain(err)))
 					joinBtn.Enable()
 				})
 				return
@@ -83,15 +84,15 @@ func (g *guiApp) buildMeshTab() fyne.CanvasObject {
 			fyne.Do(func() {
 				active = session
 				leaveBtn.Enable()
-				statusLabel.SetText(fmt.Sprintf(cat.MeshStatusJoined, preview.CIDR))
+				setStatus(statusLabel, fmt.Sprintf(cat.MeshStatusJoined, preview.CIDR))
 			})
 
 			waitErr := session.Wait()
 			fyne.Do(func() {
 				if !errors.Is(waitErr, context.Canceled) && waitErr != nil {
-					statusLabel.SetText(fmt.Sprintf(cat.MeshStatusFailed, cli.Explain(waitErr)))
+					setStatus(statusLabel, fmt.Sprintf(cat.MeshStatusFailed, cli.Explain(waitErr)))
 				} else {
-					statusLabel.SetText(cat.MeshStatusIdle)
+					setStatus(statusLabel, cat.MeshStatusIdle)
 				}
 				active = nil
 				joinBtn.Enable()
@@ -117,5 +118,5 @@ func (g *guiApp) buildMeshTab() fyne.CanvasObject {
 		statusLabel,
 		membersLabel,
 	)
-	return container.NewVScroll(form)
+	return container.NewVScroll(container.NewPadded(widget.NewCard("", "", form)))
 }

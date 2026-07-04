@@ -6,6 +6,7 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/fu1se/spur/internal/adapter/cli"
@@ -21,9 +22,8 @@ func (g *guiApp) buildRoomsTab() fyne.CanvasObject {
 
 	createNameEntry := widget.NewEntry()
 	createNameEntry.SetPlaceHolder(cat.RoomName)
-	createStatus := widget.NewLabel("")
-	createStatus.Wrapping = fyne.TextWrapWord
-	createBtn := widget.NewButton(cat.RoomCreate, nil)
+	createStatus := newStatusLabel("")
+	createBtn := widget.NewButtonWithIcon(cat.RoomCreate, theme.ContentAddIcon(), nil)
 	createBtn.OnTapped = func() {
 		name := createNameEntry.Text
 		if name == "" {
@@ -36,10 +36,10 @@ func (g *guiApp) buildRoomsTab() fyne.CanvasObject {
 			fyne.Do(func() {
 				createBtn.Enable()
 				if err != nil {
-					createStatus.SetText(cli.Explain(err))
+					setStatus(createStatus, cli.Explain(err))
 					return
 				}
-				createStatus.SetText(fmt.Sprintf(cat.RoomCreated, result.InviteToken))
+				setStatus(createStatus, fmt.Sprintf(cat.RoomCreated, result.InviteToken))
 			})
 		}()
 	}
@@ -48,9 +48,8 @@ func (g *guiApp) buildRoomsTab() fyne.CanvasObject {
 	joinNameEntry.SetPlaceHolder(cat.RoomName)
 	joinTokenEntry := widget.NewEntry()
 	joinTokenEntry.SetPlaceHolder(cat.RoomInviteToken)
-	joinStatus := widget.NewLabel("")
-	joinStatus.Wrapping = fyne.TextWrapWord
-	joinBtn := widget.NewButton(cat.RoomJoin, nil)
+	joinStatus := newStatusLabel("")
+	joinBtn := widget.NewButtonWithIcon(cat.RoomJoin, theme.LoginIcon(), nil)
 	joinBtn.OnTapped = func() {
 		name, token := joinNameEntry.Text, joinTokenEntry.Text
 		if name == "" {
@@ -63,28 +62,28 @@ func (g *guiApp) buildRoomsTab() fyne.CanvasObject {
 			fyne.Do(func() {
 				joinBtn.Enable()
 				if err != nil {
-					joinStatus.SetText(cli.Explain(err))
+					setStatus(joinStatus, cli.Explain(err))
 					return
 				}
-				joinStatus.SetText(cat.RoomJoined)
+				setStatus(joinStatus, cat.RoomJoined)
 			})
 		}()
 	}
 
-	form := container.NewVBox(
-		widget.NewLabelWithStyle(cat.RoomCreate, fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+	createCard := widget.NewCard(cat.RoomCreate, "", container.NewVBox(
 		widget.NewLabel(cat.RoomName),
 		createNameEntry,
 		createBtn,
 		createStatus,
-		widget.NewSeparator(),
-		widget.NewLabelWithStyle(cat.RoomJoin, fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+	))
+	joinCard := widget.NewCard(cat.RoomJoin, "", container.NewVBox(
 		widget.NewLabel(cat.RoomName),
 		joinNameEntry,
 		widget.NewLabel(cat.RoomInviteToken),
 		joinTokenEntry,
 		joinBtn,
 		joinStatus,
-	)
-	return container.NewVScroll(form)
+	))
+
+	return container.NewVScroll(container.NewPadded(container.NewVBox(createCard, joinCard)))
 }
