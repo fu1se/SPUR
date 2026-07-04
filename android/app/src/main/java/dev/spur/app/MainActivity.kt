@@ -283,5 +283,47 @@ fun SkeletonScreen(coreVersion: String, client: Client) {
             Text("код для подключения: $ftCode")
         }
         Text(ftStatus)
+
+        Text("Rooms")
+        var roomName by remember { mutableStateOf("") }
+        var roomStatus by remember { mutableStateOf("") }
+        OutlinedTextField(
+            value = roomName,
+            onValueChange = { roomName = it },
+            label = { Text("имя комнаты") },
+        )
+        Button(onClick = {
+            scope.launch {
+                roomStatus = "создаём..."
+                roomStatus = try {
+                    val token = withContext(Dispatchers.IO) { client.createRoom(serverAddr, roomName) }
+                    "инвайт-токен: $token"
+                } catch (e: Exception) {
+                    "ошибка: ${e.message}"
+                }
+            }
+        }) {
+            Text("Create room")
+        }
+        var inviteToken by remember { mutableStateOf("") }
+        OutlinedTextField(
+            value = inviteToken,
+            onValueChange = { inviteToken = it },
+            label = { Text("инвайт-токен") },
+        )
+        Button(onClick = {
+            scope.launch {
+                roomStatus = "присоединяемся..."
+                roomStatus = try {
+                    withContext(Dispatchers.IO) { client.joinRoom(serverAddr, roomName, inviteToken) }
+                    "вы в комнате \"$roomName\" — используйте её в поле room выше"
+                } catch (e: Exception) {
+                    "ошибка: ${e.message}"
+                }
+            }
+        }) {
+            Text("Join room")
+        }
+        Text(roomStatus)
     }
 }

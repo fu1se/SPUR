@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/fu1se/spur/internal/adapter/controlclient"
 	"github.com/fu1se/spur/internal/adapter/rendezvous"
 	"github.com/fu1se/spur/internal/domain"
 	"github.com/fu1se/spur/internal/infra"
@@ -60,13 +61,19 @@ func (c *Client) SelfID() string { return c.selfID }
 // infra.TOFUClientTLSConfig's doc comment), the same protection the
 // desktop CLI gets.
 func (c *Client) Register(serverAddr string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), registerTimeout)
-	defer cancel()
-
-	client, _, err := rendezvous.DialAndRegister(ctx, serverAddr, c.identityPath, c.trustStorePath, Version(), nil)
+	client, _, err := dialAndRegister(serverAddr, c)
 	if err != nil {
 		return err
 	}
 	client.Close()
 	return nil
+}
+
+// dialAndRegister is the shared one-shot dial+register step behind
+// Register, CreateRoom and JoinRoom — all three need nothing more than a
+// registered connection to issue one further RPC on.
+func dialAndRegister(serverAddr string, c *Client) (*controlclient.Client, infra.Identity, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), registerTimeout)
+	defer cancel()
+	return rendezvous.DialAndRegister(ctx, serverAddr, c.identityPath, c.trustStorePath, Version(), nil)
 }
