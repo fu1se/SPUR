@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Only covers the platform-level window (background behind/before
+         Compose draws its first frame, status/nav bar chrome) — the app's
+         actual theming (colors, typography, dark mode) lives in
+         Theme.kt's Compose MaterialTheme, not here. Extends the built-in
+         platform style rather than a Material Components XML theme since
+         this project has no XML-side Material Components dependency (pure
+         Compose UI). -->
+    <style name="Theme.Spur" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/ic_launcher_background</item>
+        <item name="android:statusBarColor">@color/ic_launcher_background</item>
+        <item name="android:navigationBarColor">@color/ic_launcher_background</item>
+    </style>
+</resources>

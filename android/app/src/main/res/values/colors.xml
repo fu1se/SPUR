@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Sampled from logo.jpg's corner pixels — the launcher adaptive icon
+         background and the app's dark theme background both match it, so
+         the icon reads as a continuation of the app rather than a sticker
+         on top of it. -->
+    <color name="ic_launcher_background">#18191E</color>
+    <color name="brand_teal">#24BDA8</color>
+</resources>

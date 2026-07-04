@@ -10,15 +10,27 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Fingerprint
+import androidx.compose.material.icons.filled.FolderShared
+import androidx.compose.material.icons.filled.Hub
+import androidx.compose.material.icons.filled.MeetingRoom
+import androidx.compose.material.icons.filled.Router
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -27,6 +39,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -49,9 +62,9 @@ class MainActivity : ComponentActivity() {
         val client = Client(filesDir.absolutePath)
 
         setContent {
-            MaterialTheme {
-                Surface(modifier = Modifier.fillMaxWidth()) {
-                    SkeletonScreen(coreVersion = Spurmobile.version(), client = client)
+            SpurTheme {
+                Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                    SpurApp(coreVersion = Spurmobile.version(), client = client)
                 }
             }
         }
@@ -65,161 +78,201 @@ class MainActivity : ComponentActivity() {
 // network name) is per-session by design, not settings.
 private const val SETTINGS_PREFS = "spur_settings"
 
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
-fun SkeletonScreen(coreVersion: String, client: Client) {
+fun SpurApp(coreVersion: String, client: Client) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences(SETTINGS_PREFS, android.content.Context.MODE_PRIVATE) }
+    val scope = rememberCoroutineScope()
+
     var serverAddr by remember { mutableStateOf(prefs.getString("server_addr", "") ?: "") }
     var stunAddr by remember { mutableStateOf(prefs.getString("stun_addr", "") ?: "") }
     var status by remember { mutableStateOf("не зарегистрирован") }
-    val scope = rememberCoroutineScope()
 
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("spur") },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
+            )
+        },
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .padding(innerPadding)
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Text(
+                "Go core $coreVersion",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
+            SectionCard(title = "Identity", icon = Icons.Default.Fingerprint) {
+                CopyableValue("peer id", client.selfID())
+                OutlinedTextField(
+                    value = serverAddr,
+                    onValueChange = { serverAddr = it; prefs.edit().putString("server_addr", it).apply() },
+                    label = { Text("server address") },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Button(
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = {
+                        scope.launch {
+                            status = "подключение..."
+                            status = try {
+                                withContext(Dispatchers.IO) { client.register(serverAddr) }
+                                "зарегистрирован"
+                            } catch (e: Exception) {
+                                "ошибка: ${e.message}"
+                            }
+                        }
+                    },
+                ) { Text("Register") }
+                StatusText(status)
+            }
+
+            PortForwardCard(client, serverAddr, stunAddr) { stunAddr = it; prefs.edit().putString("stun_addr", it).apply() }
+            TransferCard(client, serverAddr, stunAddr)
+            RoomsCard(client, serverAddr)
+            MeshCard(serverAddr, stunAddr)
+        }
+    }
+}
+
+@Composable
+private fun PortForwardCard(client: Client, serverAddr: String, stunAddr: String, onStunAddrChange: (String) -> Unit) {
     var toOrRoom by remember { mutableStateOf("") }
     var isRoom by remember { mutableStateOf(false) }
     var port by remember { mutableStateOf("") }
     var pfStatus by remember { mutableStateOf("остановлено") }
     var pairingCode by remember { mutableStateOf("") }
     var activeForward by remember { mutableStateOf<PortForward?>(null) }
+    val scope = rememberCoroutineScope()
 
-    Column(
-        modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Text("spur")
-        Text("Go core version: $coreVersion")
-        Text("peer id: ${client.selfID()}")
-        OutlinedTextField(
-            value = serverAddr,
-            onValueChange = { serverAddr = it; prefs.edit().putString("server_addr", it).apply() },
-            label = { Text("server address") },
-        )
-        Button(onClick = {
-            scope.launch {
-                status = "подключение..."
-                status = try {
-                    withContext(Dispatchers.IO) { client.register(serverAddr) }
-                    "зарегистрирован"
-                } catch (e: Exception) {
-                    "ошибка: ${e.message}"
-                }
-            }
-        }) {
-            Text("Register")
-        }
-        Text(status)
-
-        Text("Port forward")
+    SectionCard(title = "Port forward", icon = Icons.Default.Router) {
         OutlinedTextField(
             value = stunAddr,
-            onValueChange = { stunAddr = it; prefs.edit().putString("stun_addr", it).apply() },
+            onValueChange = onStunAddrChange,
             label = { Text("stun address") },
+            modifier = Modifier.fillMaxWidth(),
         )
+        ModeToggle(isRoom = isRoom, onChange = { isRoom = it }, toLabel = "to/код")
         OutlinedTextField(
             value = toOrRoom,
             onValueChange = { toOrRoom = it },
             label = { Text(if (isRoom) "room" else "to (peer-id/код, пусто — режим хоста)") },
+            modifier = Modifier.fillMaxWidth(),
         )
         OutlinedTextField(
             value = port,
             onValueChange = { port = it },
             label = { Text("порт") },
+            modifier = Modifier.fillMaxWidth(),
         )
-        Button(onClick = { isRoom = !isRoom }) {
-            Text(if (isRoom) "режим: room (нажмите для to/код)" else "режим: to/код (нажмите для room)")
-        }
 
         val to = if (isRoom) "" else toOrRoom
         val room = if (isRoom) toOrRoom else ""
         val onCode = CodeCallback { code -> pairingCode = code }
 
-        Button(onClick = {
-            scope.launch {
-                pfStatus = "устанавливаем канал..."
-                pairingCode = ""
-                try {
-                    val portNum = port.toLong()
-                    val fwd = withContext(Dispatchers.IO) {
-                        client.startConnect(serverAddr, stunAddr, to, room, portNum, onCode)
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(
+                modifier = Modifier.weight(1f),
+                onClick = {
+                    scope.launch {
+                        pfStatus = "устанавливаем канал..."
+                        pairingCode = ""
+                        try {
+                            val portNum = port.toLong()
+                            val fwd = withContext(Dispatchers.IO) {
+                                client.startConnect(serverAddr, stunAddr, to, room, portNum, onCode)
+                            }
+                            activeForward = fwd
+                            pfStatus = "connect: локальный порт $port проброшен"
+                            scope.launch(Dispatchers.IO) {
+                                val err = runCatching { fwd.await() }.exceptionOrNull()
+                                pfStatus = if (err != null) "connect: завершилось с ошибкой: ${err.message}" else "connect: остановлено"
+                            }
+                        } catch (e: Exception) {
+                            pfStatus = "ошибка: ${e.message}"
+                        }
                     }
-                    activeForward = fwd
-                    pfStatus = "connect: локальный порт $port проброшен"
-                    scope.launch(Dispatchers.IO) {
-                        val err = runCatching { fwd.await() }.exceptionOrNull()
-                        pfStatus = if (err != null) "connect: завершилось с ошибкой: ${err.message}" else "connect: остановлено"
+                },
+            ) { Text("Connect") }
+            Button(
+                modifier = Modifier.weight(1f),
+                onClick = {
+                    scope.launch {
+                        pfStatus = "устанавливаем канал..."
+                        pairingCode = ""
+                        try {
+                            val portNum = port.toLong()
+                            val fwd = withContext(Dispatchers.IO) {
+                                client.startExpose(serverAddr, stunAddr, to, room, portNum, onCode)
+                            }
+                            activeForward = fwd
+                            pfStatus = "expose: локальный сервис на порту $port открыт"
+                            scope.launch(Dispatchers.IO) {
+                                val err = runCatching { fwd.await() }.exceptionOrNull()
+                                pfStatus = if (err != null) "expose: завершилось с ошибкой: ${err.message}" else "expose: остановлено"
+                            }
+                        } catch (e: Exception) {
+                            pfStatus = "ошибка: ${e.message}"
+                        }
                     }
-                } catch (e: Exception) {
-                    pfStatus = "ошибка: ${e.message}"
-                }
-            }
-        }) {
-            Text("Start connect")
+                },
+            ) { Text("Expose") }
         }
-        Button(onClick = {
-            scope.launch {
-                pfStatus = "устанавливаем канал..."
-                pairingCode = ""
-                try {
-                    val portNum = port.toLong()
-                    val fwd = withContext(Dispatchers.IO) {
-                        client.startExpose(serverAddr, stunAddr, to, room, portNum, onCode)
-                    }
-                    activeForward = fwd
-                    pfStatus = "expose: локальный сервис на порту $port открыт"
-                    scope.launch(Dispatchers.IO) {
-                        val err = runCatching { fwd.await() }.exceptionOrNull()
-                        pfStatus = if (err != null) "expose: завершилось с ошибкой: ${err.message}" else "expose: остановлено"
-                    }
-                } catch (e: Exception) {
-                    pfStatus = "ошибка: ${e.message}"
-                }
-            }
-        }) {
-            Text("Start expose")
-        }
-        Button(onClick = { activeForward?.stop() }) {
-            Text("Stop")
-        }
+        OutlinedButton(modifier = Modifier.fillMaxWidth(), onClick = { activeForward?.stop() }) { Text("Stop") }
+
         if (pairingCode.isNotEmpty()) {
-            Text("код для подключения: $pairingCode")
+            CopyableValue("код для подключения", pairingCode)
         }
-        Text(pfStatus)
+        StatusText(pfStatus)
+    }
+}
 
-        Text("Send / receive")
-        var ftToOrRoom by remember { mutableStateOf("") }
-        var ftIsRoom by remember { mutableStateOf(false) }
-        var sourceUri by remember { mutableStateOf<Uri?>(null) }
-        var destUri by remember { mutableStateOf<Uri?>(null) }
-        var ftStatus by remember { mutableStateOf("остановлено") }
-        var ftCode by remember { mutableStateOf("") }
-        var activeTransfer by remember { mutableStateOf<Transfer?>(null) }
+@Composable
+private fun TransferCard(client: Client, serverAddr: String, stunAddr: String) {
+    var ftToOrRoom by remember { mutableStateOf("") }
+    var ftIsRoom by remember { mutableStateOf(false) }
+    var sourceUri by remember { mutableStateOf<Uri?>(null) }
+    var destUri by remember { mutableStateOf<Uri?>(null) }
+    var ftStatus by remember { mutableStateOf("остановлено") }
+    var ftCode by remember { mutableStateOf("") }
+    var activeTransfer by remember { mutableStateOf<Transfer?>(null) }
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
 
-        val pickSource = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
-            if (uri != null) {
-                context.contentResolver.takePersistableUriPermission(
-                    uri,
-                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION,
-                )
-                sourceUri = uri
-            }
+    val pickSource = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) {
+            context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            sourceUri = uri
         }
-        val pickDest = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
-            if (uri != null) {
-                context.contentResolver.takePersistableUriPermission(
-                    uri,
-                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
-                )
-                destUri = uri
-            }
+    }
+    val pickDest = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) {
+            context.contentResolver.takePersistableUriPermission(
+                uri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+            )
+            destUri = uri
         }
+    }
 
+    SectionCard(title = "Send / receive", icon = Icons.Default.FolderShared) {
+        ModeToggle(isRoom = ftIsRoom, onChange = { ftIsRoom = it }, toLabel = "to/код")
         OutlinedTextField(
             value = ftToOrRoom,
             onValueChange = { ftToOrRoom = it },
             label = { Text(if (ftIsRoom) "room" else "to (peer-id/код, пусто — режим хоста)") },
+            modifier = Modifier.fillMaxWidth(),
         )
-        Button(onClick = { ftIsRoom = !ftIsRoom }) {
-            Text(if (ftIsRoom) "режим: room (нажмите для to/код)" else "режим: to/код (нажмите для room)")
-        }
+
         val ftTo = if (ftIsRoom) "" else ftToOrRoom
         val ftRoom = if (ftIsRoom) ftToOrRoom else ""
         val ftOnCode = CodeCallback { code -> ftCode = code }
@@ -227,161 +280,196 @@ fun SkeletonScreen(coreVersion: String, client: Client) {
             ftStatus = "$relPath: $fileDone/$fileTotal (всего $overallDone/$overallTotal)"
         }
 
-        Button(onClick = { pickSource.launch(null) }) {
-            Text(if (sourceUri != null) "источник выбран" else "выбрать папку-источник")
-        }
-        Button(onClick = {
-            scope.launch {
-                val uri = sourceUri
-                if (uri == null) {
-                    ftStatus = "сначала выберите папку-источник"
-                    return@launch
-                }
-                ftStatus = "устанавливаем канал..."
-                ftCode = ""
-                try {
-                    val source = SafFileSource(context, uri)
-                    val tr = withContext(Dispatchers.IO) {
-                        client.startSend(serverAddr, stunAddr, ftTo, ftRoom, source, ftOnCode, onProgress)
-                    }
-                    activeTransfer = tr
-                    scope.launch(Dispatchers.IO) {
-                        val err = runCatching { tr.await() }.exceptionOrNull()
-                        ftStatus = if (err != null) "send: ошибка: ${err.message}" else "send: завершено"
-                    }
-                } catch (e: Exception) {
-                    ftStatus = "ошибка: ${e.message}"
-                }
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(modifier = Modifier.weight(1f), onClick = { pickSource.launch(null) }) {
+                Text(if (sourceUri != null) "источник ✓" else "выбрать источник", textAlign = TextAlign.Center)
             }
-        }) {
-            Text("Start send")
+            Button(
+                modifier = Modifier.weight(1f),
+                onClick = {
+                    scope.launch {
+                        val uri = sourceUri
+                        if (uri == null) {
+                            ftStatus = "сначала выберите папку-источник"
+                            return@launch
+                        }
+                        ftStatus = "устанавливаем канал..."
+                        ftCode = ""
+                        try {
+                            val source = SafFileSource(context, uri)
+                            val tr = withContext(Dispatchers.IO) {
+                                client.startSend(serverAddr, stunAddr, ftTo, ftRoom, source, ftOnCode, onProgress)
+                            }
+                            activeTransfer = tr
+                            scope.launch(Dispatchers.IO) {
+                                val err = runCatching { tr.await() }.exceptionOrNull()
+                                ftStatus = if (err != null) "send: ошибка: ${err.message}" else "send: завершено"
+                            }
+                        } catch (e: Exception) {
+                            ftStatus = "ошибка: ${e.message}"
+                        }
+                    }
+                },
+            ) { Text("Send") }
         }
 
-        Button(onClick = { pickDest.launch(null) }) {
-            Text(if (destUri != null) "папка назначения выбрана" else "выбрать папку назначения")
-        }
-        Button(onClick = {
-            scope.launch {
-                val uri = destUri
-                if (uri == null) {
-                    ftStatus = "сначала выберите папку назначения"
-                    return@launch
-                }
-                ftStatus = "устанавливаем канал..."
-                ftCode = ""
-                try {
-                    val sink = SafFileSink(context, uri)
-                    val tr = withContext(Dispatchers.IO) {
-                        client.startReceive(serverAddr, stunAddr, ftTo, ftRoom, sink, ftOnCode, onProgress, null)
-                    }
-                    activeTransfer = tr
-                    scope.launch(Dispatchers.IO) {
-                        val err = runCatching { tr.await() }.exceptionOrNull()
-                        ftStatus = if (err != null) "receive: ошибка: ${err.message}" else "receive: завершено"
-                    }
-                } catch (e: Exception) {
-                    ftStatus = "ошибка: ${e.message}"
-                }
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(modifier = Modifier.weight(1f), onClick = { pickDest.launch(null) }) {
+                Text(if (destUri != null) "назначение ✓" else "выбрать назначение", textAlign = TextAlign.Center)
             }
-        }) {
-            Text("Start receive")
+            Button(
+                modifier = Modifier.weight(1f),
+                onClick = {
+                    scope.launch {
+                        val uri = destUri
+                        if (uri == null) {
+                            ftStatus = "сначала выберите папку назначения"
+                            return@launch
+                        }
+                        ftStatus = "устанавливаем канал..."
+                        ftCode = ""
+                        try {
+                            val sink = SafFileSink(context, uri)
+                            val tr = withContext(Dispatchers.IO) {
+                                client.startReceive(serverAddr, stunAddr, ftTo, ftRoom, sink, ftOnCode, onProgress, null)
+                            }
+                            activeTransfer = tr
+                            scope.launch(Dispatchers.IO) {
+                                val err = runCatching { tr.await() }.exceptionOrNull()
+                                ftStatus = if (err != null) "receive: ошибка: ${err.message}" else "receive: завершено"
+                            }
+                        } catch (e: Exception) {
+                            ftStatus = "ошибка: ${e.message}"
+                        }
+                    }
+                },
+            ) { Text("Receive") }
         }
-        Button(onClick = { activeTransfer?.stop() }) {
-            Text("Stop transfer")
-        }
+        OutlinedButton(modifier = Modifier.fillMaxWidth(), onClick = { activeTransfer?.stop() }) { Text("Stop transfer") }
+
         if (ftCode.isNotEmpty()) {
-            Text("код для подключения: $ftCode")
+            CopyableValue("код для подключения", ftCode)
         }
-        Text(ftStatus)
+        StatusText(ftStatus)
+    }
+}
 
-        Text("Rooms")
-        var roomName by remember { mutableStateOf("") }
-        var roomStatus by remember { mutableStateOf("") }
+@Composable
+private fun RoomsCard(client: Client, serverAddr: String) {
+    var roomName by remember { mutableStateOf("") }
+    var roomStatus by remember { mutableStateOf("") }
+    var inviteToken by remember { mutableStateOf("") }
+    var createdToken by remember { mutableStateOf("") }
+    val scope = rememberCoroutineScope()
+
+    SectionCard(title = "Rooms", icon = Icons.Default.MeetingRoom) {
         OutlinedTextField(
             value = roomName,
             onValueChange = { roomName = it },
             label = { Text("имя комнаты") },
+            modifier = Modifier.fillMaxWidth(),
         )
-        Button(onClick = {
-            scope.launch {
-                roomStatus = "создаём..."
-                roomStatus = try {
-                    val token = withContext(Dispatchers.IO) { client.createRoom(serverAddr, roomName) }
-                    "инвайт-токен: $token"
-                } catch (e: Exception) {
-                    "ошибка: ${e.message}"
+        Button(
+            modifier = Modifier.fillMaxWidth(),
+            onClick = {
+                scope.launch {
+                    roomStatus = "создаём..."
+                    createdToken = ""
+                    try {
+                        val token = withContext(Dispatchers.IO) { client.createRoom(serverAddr, roomName) }
+                        createdToken = token
+                        roomStatus = "комната создана"
+                    } catch (e: Exception) {
+                        roomStatus = "ошибка: ${e.message}"
+                    }
                 }
-            }
-        }) {
-            Text("Create room")
+            },
+        ) { Text("Create room") }
+        if (createdToken.isNotEmpty()) {
+            CopyableValue("инвайт-токен", createdToken)
         }
-        var inviteToken by remember { mutableStateOf("") }
+
         OutlinedTextField(
             value = inviteToken,
             onValueChange = { inviteToken = it },
             label = { Text("инвайт-токен") },
+            modifier = Modifier.fillMaxWidth(),
         )
-        Button(onClick = {
-            scope.launch {
-                roomStatus = "присоединяемся..."
-                roomStatus = try {
-                    withContext(Dispatchers.IO) { client.joinRoom(serverAddr, roomName, inviteToken) }
-                    "вы в комнате \"$roomName\" — используйте её в поле room выше"
-                } catch (e: Exception) {
-                    "ошибка: ${e.message}"
+        Button(
+            modifier = Modifier.fillMaxWidth(),
+            onClick = {
+                scope.launch {
+                    roomStatus = "присоединяемся..."
+                    roomStatus = try {
+                        withContext(Dispatchers.IO) { client.joinRoom(serverAddr, roomName, inviteToken) }
+                        "вы в комнате \"$roomName\" — используйте её в поле room выше"
+                    } catch (e: Exception) {
+                        "ошибка: ${e.message}"
+                    }
                 }
-            }
-        }) {
-            Text("Join room")
-        }
-        Text(roomStatus)
+            },
+        ) { Text("Join room") }
+        StatusText(roomStatus)
+    }
+}
 
-        Text("Mesh VPN")
-        var meshNetwork by remember { mutableStateOf("") }
-        var meshInvite by remember { mutableStateOf("") }
-        var meshStatus by remember { mutableStateOf("остановлено") }
-        val vpnPermissionLauncher = rememberLauncherForActivityResult(
-            ActivityResultContracts.StartActivityForResult(),
-        ) { result ->
-            if (result.resultCode == android.app.Activity.RESULT_OK) {
-                startMeshService(context, serverAddr, stunAddr, meshNetwork, meshInvite)
-                meshStatus = "запускается..."
-            } else {
-                meshStatus = "отказано в VPN-разрешении"
-            }
+@Composable
+private fun MeshCard(serverAddr: String, stunAddr: String) {
+    val context = LocalContext.current
+    var meshNetwork by remember { mutableStateOf("") }
+    var meshInvite by remember { mutableStateOf("") }
+    var meshStatus by remember { mutableStateOf("остановлено") }
+
+    val vpnPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        if (result.resultCode == android.app.Activity.RESULT_OK) {
+            startMeshService(context, serverAddr, stunAddr, meshNetwork, meshInvite)
+            meshStatus = "запускается..."
+        } else {
+            meshStatus = "отказано в VPN-разрешении"
         }
+    }
+
+    SectionCard(title = "Mesh VPN", icon = Icons.Default.Hub) {
         OutlinedTextField(
             value = meshNetwork,
             onValueChange = { meshNetwork = it },
             label = { Text("имя mesh-сети") },
+            modifier = Modifier.fillMaxWidth(),
         )
         OutlinedTextField(
             value = meshInvite,
             onValueChange = { meshInvite = it },
             label = { Text("инвайт-токен (не нужен при повторном join)") },
+            modifier = Modifier.fillMaxWidth(),
         )
-        Button(onClick = {
-            // VpnService.prepare returns a consent-screen Intent the
-            // first time (or after being revoked), null once already
-            // granted — same one-time-then-remembered flow as any other
-            // Android runtime permission.
-            val prepareIntent = VpnService.prepare(context)
-            if (prepareIntent != null) {
-                vpnPermissionLauncher.launch(prepareIntent)
-            } else {
-                startMeshService(context, serverAddr, stunAddr, meshNetwork, meshInvite)
-            }
-            meshStatus = "запускается..."
-        }) {
-            Text("Join mesh")
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(
+                modifier = Modifier.weight(1f),
+                onClick = {
+                    // VpnService.prepare returns a consent-screen Intent the
+                    // first time (or after being revoked), null once already
+                    // granted — same one-time-then-remembered flow as any
+                    // other Android runtime permission.
+                    val prepareIntent = VpnService.prepare(context)
+                    if (prepareIntent != null) {
+                        vpnPermissionLauncher.launch(prepareIntent)
+                    } else {
+                        startMeshService(context, serverAddr, stunAddr, meshNetwork, meshInvite)
+                    }
+                    meshStatus = "запускается..."
+                },
+            ) { Text("Join mesh") }
+            OutlinedButton(
+                modifier = Modifier.weight(1f),
+                onClick = {
+                    context.stopService(Intent(context, SpurVpnService::class.java))
+                    meshStatus = "остановлено"
+                },
+            ) { Text("Stop mesh") }
         }
-        Button(onClick = {
-            context.stopService(Intent(context, SpurVpnService::class.java))
-            meshStatus = "остановлено"
-        }) {
-            Text("Stop mesh")
-        }
-        Text(meshStatus)
+        StatusText(meshStatus)
     }
 }
 
