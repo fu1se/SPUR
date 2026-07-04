@@ -26,26 +26,33 @@ import (
 // repeated calls to ConnectToNewMembers only act on newly seen ones, and
 // owns cleanup of every tunnel it opened.
 type Peers struct {
-	ServerAddr, StunAddr, IdentityPath, ClientVersion string
-	Self                                              domain.PeerID
-	Bind                                              *wgmesh.Bind
-	Dev                                               *wgmesh.Device
+	ServerAddr, StunAddr, IdentityPath, TrustStorePath, ClientVersion string
+	Self                                                              domain.PeerID
+	Bind                                                              *wgmesh.Bind
+	Dev                                                               *wgmesh.Device
 
 	mu        sync.Mutex
 	connected map[domain.PeerID]*rendezvous.Tunnel
 }
 
 // NewPeers builds a Peers ready to track connections for one mesh join.
-func NewPeers(serverAddr, stunAddr, identityPath, clientVersion string, self domain.PeerID, bind *wgmesh.Bind, dev *wgmesh.Device) *Peers {
+// trustStorePath is forwarded to every rendezvous.Establish call this
+// Peers makes — empty string means "use the default"
+// (os.UserConfigDir()-based), which is what desktop's "spur join" wants
+// but breaks on Android, where the app process has neither $HOME nor
+// $XDG_CONFIG_HOME set (see android/spurmobile.Client's app-private
+// config dir).
+func NewPeers(serverAddr, stunAddr, identityPath, trustStorePath, clientVersion string, self domain.PeerID, bind *wgmesh.Bind, dev *wgmesh.Device) *Peers {
 	return &Peers{
-		ServerAddr:    serverAddr,
-		StunAddr:      stunAddr,
-		IdentityPath:  identityPath,
-		ClientVersion: clientVersion,
-		Self:          self,
-		Bind:          bind,
-		Dev:           dev,
-		connected:     make(map[domain.PeerID]*rendezvous.Tunnel),
+		ServerAddr:     serverAddr,
+		StunAddr:       stunAddr,
+		IdentityPath:   identityPath,
+		TrustStorePath: trustStorePath,
+		ClientVersion:  clientVersion,
+		Self:           self,
+		Bind:           bind,
+		Dev:            dev,
+		connected:      make(map[domain.PeerID]*rendezvous.Tunnel),
 	}
 }
 
@@ -102,7 +109,7 @@ func (m *Peers) reapDeadConnection(peer domain.PeerID) bool {
 
 func (m *Peers) connectOne(ctx context.Context, mem domain.MeshMember) {
 	resolve := rendezvous.FixedCounterpart(mem.PeerID)
-	tun, _, _, err := rendezvous.Establish(ctx, m.ServerAddr, m.StunAddr, m.IdentityPath, "", m.ClientVersion, resolve, func(string) {}, nil)
+	tun, _, _, err := rendezvous.Establish(ctx, m.ServerAddr, m.StunAddr, m.IdentityPath, m.TrustStorePath, m.ClientVersion, resolve, func(string) {}, nil)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "spur: mesh: rendezvous with %s failed: %v\n", mem.PeerID, err)
 		return

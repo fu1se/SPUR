@@ -99,7 +99,7 @@ func join(ctx context.Context, serverAddr, stunAddr, networkName, inviteToken, i
 		return fmt.Errorf("app: bring up tun device: %w", err)
 	}
 
-	mesh := meshclient.NewPeers(serverAddr, stunAddr, resolvedIdentityPath, cli.Version(), self, bind, dev)
+	mesh := meshclient.NewPeers(serverAddr, stunAddr, resolvedIdentityPath, "", cli.Version(), self, bind, dev)
 	defer mesh.CloseAll()
 
 	mesh.ConnectToNewMembers(ctx, network)

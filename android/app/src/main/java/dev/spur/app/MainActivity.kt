@@ -1,6 +1,8 @@
 package dev.spur.app
 
+import android.content.Intent
 import android.net.Uri
+import android.net.VpnService
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -325,5 +327,61 @@ fun SkeletonScreen(coreVersion: String, client: Client) {
             Text("Join room")
         }
         Text(roomStatus)
+
+        Text("Mesh VPN")
+        var meshNetwork by remember { mutableStateOf("") }
+        var meshInvite by remember { mutableStateOf("") }
+        var meshStatus by remember { mutableStateOf("остановлено") }
+        val vpnPermissionLauncher = rememberLauncherForActivityResult(
+            ActivityResultContracts.StartActivityForResult(),
+        ) { result ->
+            if (result.resultCode == android.app.Activity.RESULT_OK) {
+                startMeshService(context, serverAddr, stunAddr, meshNetwork, meshInvite)
+                meshStatus = "запускается..."
+            } else {
+                meshStatus = "отказано в VPN-разрешении"
+            }
+        }
+        OutlinedTextField(
+            value = meshNetwork,
+            onValueChange = { meshNetwork = it },
+            label = { Text("имя mesh-сети") },
+        )
+        OutlinedTextField(
+            value = meshInvite,
+            onValueChange = { meshInvite = it },
+            label = { Text("инвайт-токен (не нужен при повторном join)") },
+        )
+        Button(onClick = {
+            // VpnService.prepare returns a consent-screen Intent the
+            // first time (or after being revoked), null once already
+            // granted — same one-time-then-remembered flow as any other
+            // Android runtime permission.
+            val prepareIntent = VpnService.prepare(context)
+            if (prepareIntent != null) {
+                vpnPermissionLauncher.launch(prepareIntent)
+            } else {
+                startMeshService(context, serverAddr, stunAddr, meshNetwork, meshInvite)
+            }
+            meshStatus = "запускается..."
+        }) {
+            Text("Join mesh")
+        }
+        Button(onClick = {
+            context.stopService(Intent(context, SpurVpnService::class.java))
+            meshStatus = "остановлено"
+        }) {
+            Text("Stop mesh")
+        }
+        Text(meshStatus)
     }
+}
+
+private fun startMeshService(context: android.content.Context, serverAddr: String, stunAddr: String, networkName: String, inviteToken: String) {
+    val intent = Intent(context, SpurVpnService::class.java)
+        .putExtra(SpurVpnService.EXTRA_SERVER, serverAddr)
+        .putExtra(SpurVpnService.EXTRA_STUN, stunAddr)
+        .putExtra(SpurVpnService.EXTRA_NETWORK, networkName)
+        .putExtra(SpurVpnService.EXTRA_INVITE, inviteToken)
+    context.startForegroundService(intent)
 }
