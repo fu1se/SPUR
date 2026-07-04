@@ -11,11 +11,12 @@ import (
 func (c *Client) CreateRoom(serverAddr, roomName string) (string, error) {
 	client, id, err := dialAndRegister(serverAddr, c)
 	if err != nil {
-		return "", err
+		return "", explain(err)
 	}
 	defer client.Close()
 
-	return client.CreateRoom(context.Background(), roomName, id.PublicKey)
+	token, err := client.CreateRoom(context.Background(), roomName, id.PublicKey)
+	return token, explain(err)
 }
 
 // JoinRoom is "spur room join": joins a room created by someone else,
@@ -24,9 +25,9 @@ func (c *Client) CreateRoom(serverAddr, roomName string) (string, error) {
 func (c *Client) JoinRoom(serverAddr, roomName, inviteToken string) error {
 	client, id, err := dialAndRegister(serverAddr, c)
 	if err != nil {
-		return err
+		return explain(err)
 	}
 	defer client.Close()
 
-	return client.JoinRoom(context.Background(), roomName, inviteToken, id.PublicKey)
+	return explain(client.JoinRoom(context.Background(), roomName, inviteToken, id.PublicKey))
 }

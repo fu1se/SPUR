@@ -58,13 +58,13 @@ func (c *Client) StartConnect(serverAddr, stunAddr, to, room string, localPort i
 	resolve := rendezvous.CounterpartResolverFor(to, room, codeFunc(onCode))
 	tun, _, _, err := rendezvous.Establish(context.Background(), serverAddr, stunAddr, c.identityPath, c.trustStorePath, Version(), resolve, func(string) {}, nil)
 	if err != nil {
-		return nil, err
+		return nil, explain(err)
 	}
 
 	listener, err := localnet.ListenTCP(fmt.Sprintf(":%d", localPort))
 	if err != nil {
 		tun.Close()
-		return nil, fmt.Errorf("spurmobile: listen locally: %w", err)
+		return nil, explain(fmt.Errorf("spurmobile: listen locally: %w", err))
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -73,7 +73,7 @@ func (c *Client) StartConnect(serverAddr, stunAddr, to, room string, localPort i
 		runErr := usecase.ForwardPort{Listener: listener, Tunnel: tun.Conn}.Run(ctx)
 		tun.Close()
 		listener.Close()
-		pf.done <- runErr
+		pf.done <- explain(runErr)
 	}()
 	return pf, nil
 }
@@ -85,7 +85,7 @@ func (c *Client) StartExpose(serverAddr, stunAddr, to, room string, targetPort i
 	resolve := rendezvous.CounterpartResolverFor(to, room, codeFunc(onCode))
 	tun, _, _, err := rendezvous.Establish(context.Background(), serverAddr, stunAddr, c.identityPath, c.trustStorePath, Version(), resolve, func(string) {}, nil)
 	if err != nil {
-		return nil, err
+		return nil, explain(err)
 	}
 
 	dialer := localnet.TCPDialer{Addr: fmt.Sprintf("127.0.0.1:%d", targetPort)}
@@ -95,7 +95,7 @@ func (c *Client) StartExpose(serverAddr, stunAddr, to, room string, targetPort i
 	go func() {
 		runErr := usecase.ServeExposedPort{Dialer: dialer, Tunnel: tun.Conn}.Run(ctx)
 		tun.Close()
-		pf.done <- runErr
+		pf.done <- explain(runErr)
 	}()
 	return pf, nil
 }

@@ -63,7 +63,7 @@ func (c *Client) SelfID() string { return c.selfID }
 func (c *Client) Register(serverAddr string) error {
 	client, _, err := dialAndRegister(serverAddr, c)
 	if err != nil {
-		return err
+		return explain(err)
 	}
 	client.Close()
 	return nil

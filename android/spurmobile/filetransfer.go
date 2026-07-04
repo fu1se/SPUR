@@ -183,7 +183,7 @@ func (c *Client) StartSend(serverAddr, stunAddr, to, room string, source FileSou
 	resolve := rendezvous.CounterpartResolverFor(to, room, codeFunc(onCode))
 	tun, _, _, err := rendezvous.Establish(context.Background(), serverAddr, stunAddr, c.identityPath, c.trustStorePath, Version(), resolve, func(string) {}, nil)
 	if err != nil {
-		return nil, err
+		return nil, explain(err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -195,7 +195,7 @@ func (c *Client) StartSend(serverAddr, stunAddr, to, room string, source FileSou
 			OnProgress: progressFunc(onProgress),
 		}.Run(ctx)
 		tun.Close()
-		tr.done <- runErr
+		tr.done <- explain(runErr)
 	}()
 	return tr, nil
 }
@@ -209,7 +209,7 @@ func (c *Client) StartReceive(serverAddr, stunAddr, to, room string, sink FileSi
 	resolve := rendezvous.CounterpartResolverFor(to, room, codeFunc(onCode))
 	tun, _, _, err := rendezvous.Establish(context.Background(), serverAddr, stunAddr, c.identityPath, c.trustStorePath, Version(), resolve, func(string) {}, nil)
 	if err != nil {
-		return nil, err
+		return nil, explain(err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -222,7 +222,7 @@ func (c *Client) StartReceive(serverAddr, stunAddr, to, room string, sink FileSi
 			OnResumeOffer: resumeFunc(onResume),
 		}.Run(ctx)
 		tun.Close()
-		tr.done <- runErr
+		tr.done <- explain(runErr)
 	}()
 	return tr, nil
 }

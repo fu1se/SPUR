@@ -43,13 +43,13 @@ func (c *Client) ResolveMeshNetwork(serverAddr, networkName, inviteToken string)
 
 	client, id, err := rendezvous.DialAndRegister(ctx, serverAddr, c.identityPath, c.trustStorePath, Version(), nil)
 	if err != nil {
-		return nil, err
+		return nil, explain(err)
 	}
 	defer client.Close()
 
 	network, err := client.JoinNetwork(ctx, networkName, inviteToken, id.PublicKey)
 	if err != nil {
-		return nil, fmt.Errorf("spurmobile: join network: %w", err)
+		return nil, explain(fmt.Errorf("spurmobile: join network: %w", err))
 	}
 
 	self := domain.DerivePeerID(id.PublicKey)
@@ -58,7 +58,7 @@ func (c *Client) ResolveMeshNetwork(serverAddr, networkName, inviteToken string)
 			return &MeshNetworkInfo{SelfMeshIP: m.MeshIP.String(), CIDRBits: network.CIDR.Bits()}, nil
 		}
 	}
-	return nil, fmt.Errorf("spurmobile: server did not return our own mesh membership")
+	return nil, explain(fmt.Errorf("spurmobile: server did not return our own mesh membership"))
 }
 
 // MeshSession is a running "join network" session (see Client.JoinMesh).
@@ -96,28 +96,28 @@ func (c *Client) JoinMesh(serverAddr, stunAddr, networkName, inviteToken string,
 
 	id, err := infra.LoadOrCreateIdentity(c.identityPath)
 	if err != nil {
-		return nil, fmt.Errorf("spurmobile: load identity: %w", err)
+		return nil, explain(fmt.Errorf("spurmobile: load identity: %w", err))
 	}
 	self := domain.DerivePeerID(id.PublicKey)
 
 	controlTLSConf, err := rendezvous.ControlClientTLS(serverAddr, c.trustStorePath)
 	if err != nil {
-		return nil, err
+		return nil, explain(err)
 	}
 	joinClient, err := controlclient.Dial(ctx, serverAddr, controlTLSConf, infra.DefaultQUICConfig())
 	if err != nil {
-		return nil, fmt.Errorf("spurmobile: dial control-plane: %w", err)
+		return nil, explain(fmt.Errorf("spurmobile: dial control-plane: %w", err))
 	}
 
 	if _, err := joinClient.Register(ctx, id.PublicKey, Version()); err != nil {
 		joinClient.Close()
-		return nil, fmt.Errorf("spurmobile: register: %w", err)
+		return nil, explain(fmt.Errorf("spurmobile: register: %w", err))
 	}
 
 	network, err := joinClient.JoinNetwork(ctx, networkName, inviteToken, id.PublicKey)
 	if err != nil {
 		joinClient.Close()
-		return nil, fmt.Errorf("spurmobile: join network: %w", err)
+		return nil, explain(fmt.Errorf("spurmobile: join network: %w", err))
 	}
 
 	bind := wgmesh.NewBind()
@@ -125,18 +125,18 @@ func (c *Client) JoinMesh(serverAddr, stunAddr, networkName, inviteToken string,
 	dev, err := wgmesh.NewDeviceFromFD(bind, tunFd, logger)
 	if err != nil {
 		joinClient.Close()
-		return nil, fmt.Errorf("spurmobile: wrap tun device: %w", err)
+		return nil, explain(fmt.Errorf("spurmobile: wrap tun device: %w", err))
 	}
 
 	if err := dev.IpcSet(wgmesh.BuildDeviceConfig(id.PrivateKey)); err != nil {
 		dev.Close()
 		joinClient.Close()
-		return nil, fmt.Errorf("spurmobile: configure wireguard device: %w", err)
+		return nil, explain(fmt.Errorf("spurmobile: configure wireguard device: %w", err))
 	}
 	if err := dev.Up(); err != nil {
 		dev.Close()
 		joinClient.Close()
-		return nil, fmt.Errorf("spurmobile: bring up tun device: %w", err)
+		return nil, explain(fmt.Errorf("spurmobile: bring up tun device: %w", err))
 	}
 
 	mesh := meshclient.NewPeers(serverAddr, stunAddr, c.identityPath, c.trustStorePath, Version(), self, bind, dev)
