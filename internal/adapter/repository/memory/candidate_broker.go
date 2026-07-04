@@ -2,7 +2,6 @@ package memory
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"time"
 
@@ -75,13 +74,40 @@ func (b *CandidateBroker) delete(key candidateKey) {
 	b.mu.Unlock()
 }
 
+// Put replaces whatever candidate set is currently buffered for this
+// key, rather than rejecting the call outright when one is already
+// there. domain.SessionIDFor is a pure function of the peer pair, not of
+// "attempt number" or time — a retrying caller (usecase.JoinNetwork's
+// periodic ConnectToNewMembers loop is the main one, but any repeated
+// connect/expose/send/receive against the same counterpart hits this
+// too) reuses the exact same session ID on every retry. The original
+// "reject if already published" behavior turned that into a
+// self-inflicted deadlock: if side A's first Put is never consumed
+// (side B hasn't called Wait yet, or already timed out), A's own next
+// retry publishing under the very same key would fail with "already
+// published" and A would never get past PublishCandidates again for
+// this session — regardless of whether B was actually reachable. Found
+// live: two genuinely running, continuously-retrying `spur join`
+// processes (real desktop peer plus a diagnostic identity on this
+// sandbox) that never once succeeded in over two hours, each stuck
+// re-colliding with its own leftover unconsumed publish faster than
+// candidateTTL could prune it. Overwriting instead means the most
+// recent retry's candidates are always what a Wait would see — correct
+// for the retry use case (older candidate/port pairs from a previous
+// attempt are stale anyway) and harmless for the one-shot case (a
+// single connect/expose call only ever Puts once).
 func (b *CandidateBroker) Put(_ context.Context, sessionID string, peer domain.PeerID, set domain.CandidateSet) error {
 	e := b.entry(candidateKey{sessionID, peer})
-	select {
-	case e.ch <- set:
-		return nil
-	default:
-		return fmt.Errorf("memory: candidates for session %s peer %s already published", sessionID, peer)
+	for {
+		select {
+		case e.ch <- set:
+			return nil
+		default:
+			select {
+			case <-e.ch: // drain the stale value, then retry the send above
+			default:
+			}
+		}
 	}
 }
 

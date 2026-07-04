@@ -10,6 +10,33 @@ import (
 	"github.com/fu1se/spur/internal/domain"
 )
 
+// TestCandidateBroker_PutOverwritesUnconsumedEntry guards against a real
+// deadlock found live: domain.SessionIDFor is a pure function of the peer
+// pair, not of attempt number, so a retrying caller (usecase.JoinNetwork's
+// periodic ConnectToNewMembers loop is the main one) reuses the exact same
+// session ID on every retry. Put used to reject a second call for a key
+// whose first value was never consumed ("already published") -- meaning a
+// caller whose own first Put nobody ever Waited for would find every
+// subsequent retry failing at that same step forever, regardless of
+// whether the counterpart was actually reachable. Confirmed live: two
+// genuinely running, continuously-retrying `spur join` processes never
+// once succeeded rendezvousing with each other over more than two hours,
+// each stuck re-colliding with its own leftover unconsumed publish faster
+// than candidateTTL could prune it away.
+func TestCandidateBroker_PutOverwritesUnconsumedEntry(t *testing.T) {
+	b := NewCandidateBroker()
+	first := domain.CandidateSet{PublicKey: domain.PublicKey{1}}
+	second := domain.CandidateSet{PublicKey: domain.PublicKey{2}}
+
+	require.NoError(t, b.Put(context.Background(), "session", "peer", first))
+	require.NoError(t, b.Put(context.Background(), "session", "peer", second),
+		"a retry publishing under the same session/peer key must not fail")
+
+	got, err := b.Wait(context.Background(), "session", "peer")
+	require.NoError(t, err)
+	require.Equal(t, second, got, "Wait should see the most recent Put, not a stale first one")
+}
+
 func TestCandidateBroker_PutThenWaitRoundTrips(t *testing.T) {
 	b := NewCandidateBroker()
 	set := domain.CandidateSet{PublicKey: domain.PublicKey{1, 2, 3}}
