@@ -23,6 +23,12 @@ The client and server are two separate binaries (`spur` and
 `spur-server`), not one with subcommands: the client has no reason to
 pull in the SQLite driver and control-plane server it never uses.
 
+The client itself comes in two forms sharing the same identity, trust
+store and config file: `spur`, the CLI covered below, and `spur-gui`, a
+desktop GUI wrapping the same operations (port forwarding, file
+transfer, rooms, mesh VPN) in a window instead of subcommands — see
+[GUI client](#gui-client).
+
 ## Installation
 
 The simplest way (Linux/macOS, no Go required) — downloads a ready-built
@@ -59,14 +65,15 @@ cd SPUR
 make install        # builds and installs + sets up PATH
 ```
 
-`make build` (without `install`) just builds `./bin/spur` and
-`./bin/spur-server`, without copying anything anywhere — if that's what
-you need instead. Cross-compiling for every platform: `make release`
-(see `make help`).
+`make build` (without `install`) just builds `./bin/spur`, `./bin/spur-gui`
+and `./bin/spur-server`, without copying anything anywhere — if that's
+what you need instead. Cross-compiling for every platform: `make release`
+(see `make help`) — covers `spur`/`spur-server` only, not `spur-gui` (see
+[GUI client](#gui-client) for why).
 
-`spur` is installed on every machine that will connect to others.
-`spur-server` — only on one machine with a public IP (the rendezvous
-server).
+`spur` (and, optionally, `spur-gui`) is installed on every machine that
+will connect to others. `spur-server` — only on one machine with a public
+IP (the rendezvous server).
 
 ## Running the server
 
@@ -203,6 +210,46 @@ compares its own build version against the server's and prints a warning
 if they differ — a heads-up that some functionality might not work as
 expected, not a hard failure. Keep both sides on the same release when
 possible (see [Installation](#installation) for how to update).
+
+## GUI client
+
+`spur-gui` is a desktop GUI covering the same operations as the CLI
+(identity, port forwarding, file transfer, rooms, mesh VPN) as a window
+with tabs instead of subcommands — for anyone who'd rather click buttons
+than remember flags. It's a genuine peer of the CLI, not a replacement:
+both binaries read and write the exact same identity file, TOFU trust
+store and `config.json` (see [Config file](#config-file)), so switching
+between `spur connect ...` on the command line and the GUI's "Port
+forward" tab on the same machine just works — no separate setup, same
+peer-id either way.
+
+Build and run it like any other binary (see
+[Installation](#installation) — `make build`/`make install` produce it
+alongside `spur`/`spur-server`):
+
+```sh
+spur-gui
+```
+
+Not part of the cross-compiled `make release` set, unlike `spur`/
+`spur-server`: it's built on Fyne, which needs cgo bindings to the real
+target platform's GL/windowing libraries (X11/Wayland, Cocoa, Win32) —
+that can't be produced by cross-compiling from one machine the way the
+pure-Go CLI/server binaries can. Build it natively on whichever OS you
+want to run it on.
+
+The window has five tabs:
+
+- **Identity** — your peer-id (with a copy button), the shared server/
+  STUN address settings every other tab uses, and a connectivity test
+  (same as `spur register`).
+- **Port forward** — `connect`/`expose`, picking a counterpart by peer-id,
+  pairing code, or room.
+- **Files** — `send`/`receive`, with a file/folder picker, a progress
+  bar, and a resume prompt for partially-received transfers.
+- **Rooms** — `room create`/`room join`.
+- **Mesh VPN** — `join`, same root/`CAP_NET_ADMIN` requirement as the CLI
+  (creating a real TUN interface).
 
 ## All client actions
 
@@ -361,6 +408,7 @@ own process's locale.
 | Command | What it does |
 |---|---|
 | `spur-server` | Rendezvous server (control-plane + STUN + relay fallback); flags live directly on the root command, not a subcommand |
+| `spur-gui` | Desktop GUI covering the same client operations as a window with tabs (see [GUI client](#gui-client)) |
 | `spur whoami` | Your own peer-id, no network access |
 | `spur register` | Diagnostic: register with the server, show the observed address |
 | `spur connect` | Forward a local port to a peer's service (`expose`) |
@@ -415,7 +463,7 @@ development phase's decisions are in `CLAUDE.md`.
 ```sh
 make test     # go test ./... -race
 make vet      # go vet + gofmt -l
-make build    # build ./bin/spur and ./bin/spur-server for the current platform
+make build    # build ./bin/spur, ./bin/spur-gui and ./bin/spur-server for the current platform
 make install  # build and install into PATH (see install.sh)
 ```
 

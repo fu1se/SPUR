@@ -83,6 +83,15 @@ if [ -n "${SPUR_LOCAL_BUILD_DIR:-}" ]; then
 	cp "$SPUR_LOCAL_BUILD_DIR/spur" "$INSTALL_DIR/spur"
 	cp "$SPUR_LOCAL_BUILD_DIR/spur-server" "$INSTALL_DIR/spur-server"
 	chmod +x "$INSTALL_DIR/spur" "$INSTALL_DIR/spur-server"
+	# spur-gui only exists here when it was actually built locally
+	# (`make build`/`make install`) — it's never downloaded below, since
+	# GitHub releases don't carry it yet (see Makefile's release target
+	# comment: Fyne needs a native cgo build per platform, not something
+	# this script's prebuilt-binary download path can offer today).
+	if [ -f "$SPUR_LOCAL_BUILD_DIR/spur-gui" ]; then
+		cp "$SPUR_LOCAL_BUILD_DIR/spur-gui" "$INSTALL_DIR/spur-gui"
+		chmod +x "$INSTALL_DIR/spur-gui"
+	fi
 else
 	platform=$(detect_platform)
 	download_binary "$platform" spur
@@ -90,6 +99,9 @@ else
 fi
 
 echo "installed spur and spur-server to $INSTALL_DIR"
+if [ -f "$INSTALL_DIR/spur-gui" ]; then
+	echo "installed spur-gui (GUI client) to $INSTALL_DIR"
+fi
 
 case ":$PATH:" in
 	*":$INSTALL_DIR:"*)

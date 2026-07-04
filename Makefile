@@ -8,13 +8,14 @@ RELEASE_PLATFORMS := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/a
 .PHONY: help
 help:
 	@echo "targets:"
-	@echo "  build    - build ./$(BIN_DIR)/spur (client) and ./$(BIN_DIR)/spur-server for the current platform"
-	@echo "  install  - build and install spur/spur-server, adding them to PATH automatically (see install.sh)"
+	@echo "  build    - build ./$(BIN_DIR)/spur (CLI), spur-gui (GUI) and spur-server for the current platform"
+	@echo "  install  - build and install spur/spur-gui/spur-server, adding them to PATH automatically (see install.sh)"
 	@echo "  test     - go test ./... -race"
 	@echo "  vet      - go vet + gofmt -l (fails if any file is unformatted)"
 	@echo "  fmt      - gofmt -w every .go file"
 	@echo "  proto    - regenerate internal/adapter/controlproto from proto/control/v1/control.proto"
 	@echo "  release  - cross-compile release binaries into ./$(DIST_DIR) for: $(RELEASE_PLATFORMS)"
+	@echo "             (spur-gui is deliberately NOT included — see the release target's own comment)"
 	@echo "  mobile-aar - gomobile bind android/spurmobile into android/app/libs/spurmobile.aar"
 	@echo "  clean    - remove $(BIN_DIR), $(DIST_DIR) and the built .aar"
 
@@ -23,6 +24,7 @@ build:
 	mkdir -p $(BIN_DIR)
 	go build -trimpath -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/spur ./cmd/spur
 	go build -trimpath -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/spur-server ./cmd/spur-server
+	go build -trimpath -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/spur-gui ./cmd/spur-gui
 
 .PHONY: install
 install: build
@@ -49,6 +51,15 @@ proto:
 	protoc --go_out=internal/adapter/controlproto --go_opt=paths=source_relative \
 		--proto_path=proto/control/v1 proto/control/v1/control.proto
 
+# spur-gui is deliberately not part of this cross-compiled release set:
+# Fyne needs cgo bindings to the target platform's real GL/windowing
+# libraries (X11/Wayland on Linux, Cocoa on macOS, Win32 on Windows) —
+# unlike spur/spur-server (CGO_ENABLED=0, pure Go), that can't be
+# produced by cross-compiling from a single Linux box the way this
+# target does. Shipping spur-gui for other platforms needs a native
+# build on each target OS (a CI matrix, not this Makefile) — out of
+# scope for now; `make build` still builds it for whatever platform
+# you're already on.
 .PHONY: release
 release: clean
 	mkdir -p $(DIST_DIR)
