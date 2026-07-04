@@ -65,9 +65,10 @@ type incomingPacket struct {
 // silently went unreachable the moment the interface came up — this
 // comment is here so nobody "simplifies" that back in.
 type Bind struct {
-	mu        sync.Mutex
-	streams   map[domain.PeerID]port.Stream
-	peerChans map[domain.PeerID]chan incomingPacket
+	mu           sync.Mutex
+	streams      map[domain.PeerID]port.Stream
+	peerChans    map[domain.PeerID]chan incomingPacket
+	peersChanged chan struct{}
 
 	openMu sync.Mutex
 	done   chan struct{}
@@ -83,9 +84,35 @@ const peerChanBuffer = 128
 
 func NewBind() *Bind {
 	return &Bind{
-		streams:   make(map[domain.PeerID]port.Stream),
-		peerChans: make(map[domain.PeerID]chan incomingPacket),
+		streams:      make(map[domain.PeerID]port.Stream),
+		peerChans:    make(map[domain.PeerID]chan incomingPacket),
+		peersChanged: make(chan struct{}),
 	}
+}
+
+// notifyPeersChangedLocked wakes up any receive() call currently blocked in
+// reflect.Select on a stale channel snapshot, by closing the current
+// peersChanged channel (a case in every such Select) and replacing it with
+// a fresh one. Must be called with mu held.
+//
+// This closes a real race, not just a hypothetical one: Open() is called
+// (via wireguard-go's own listen_port-triggered BindUpdate — see the
+// struct doc comment) *before* any peer has ever been added — that's the
+// normal startup order, Device.Up() happens before
+// meshclient.Peers.ConnectToNewMembers's first AddPeer. If receive()'s
+// reflect.Select call is already blocked on that empty snapshot (0 peer
+// channels, just `done`) by the time AddPeer creates the first peer's
+// channel, that specific Select can never learn about it — reflect.Select
+// only watches the exact channels it was given, and rebuilding the case
+// list only happens on the *next* call to receive(), which never comes
+// because this one never returns. Confirmed live: two Android peers
+// dialing each other, WireGuard handshake-initiation frames demonstrably
+// arriving at the listener's Bind.readLoop (proven via temporary
+// instrumentation), yet wireguard-go itself never logged receiving them —
+// receive() was still blocked on its original, peer-less snapshot.
+func (b *Bind) notifyPeersChangedLocked() {
+	close(b.peersChanged)
+	b.peersChanged = make(chan struct{})
 }
 
 // AddPeer registers stream as peer's transport and starts reading framed
@@ -116,6 +143,7 @@ func (b *Bind) AddPeer(peer domain.PeerID, stream port.Stream, isDialer bool) er
 	old, hadOld := b.streams[peer]
 	b.streams[peer] = stream
 	b.peerChans[peer] = ch
+	b.notifyPeersChangedLocked()
 	b.mu.Unlock()
 	if hadOld {
 		// A second AddPeer for a peer ID already registered would
@@ -138,6 +166,7 @@ func (b *Bind) RemovePeer(peer domain.PeerID) {
 	b.mu.Lock()
 	stream, ok := b.streams[peer]
 	delete(b.streams, peer)
+	b.notifyPeersChangedLocked()
 	b.mu.Unlock()
 	if ok {
 		_ = stream.Close()
@@ -157,6 +186,7 @@ func (b *Bind) removeIfCurrent(peer domain.PeerID, stream port.Stream, ch chan i
 	if b.peerChans[peer] == ch {
 		delete(b.peerChans, peer)
 	}
+	b.notifyPeersChangedLocked()
 	b.mu.Unlock()
 }
 
@@ -247,21 +277,37 @@ func (b *Bind) Open(_ uint16) ([]conn.ReceiveFunc, uint16, error) {
 	// peer set for a mesh network is small (tens of members, not
 	// thousands), so the reflection overhead is an acceptable trade for
 	// not having to manage a fleet of per-peer forwarder goroutines.
+	//
+	// peersChanged is its own case, not just a detail of the rebuild
+	// loop: without it, a call already blocked in reflect.Select on a
+	// case list built before a peer existed would never learn that
+	// AddPeer later registered one — reflect.Select only watches the
+	// exact channels it was handed. Closing (and replacing)
+	// peersChanged whenever the peer set changes forces any in-flight
+	// Select to wake up and rebuild against current state. See
+	// notifyPeersChangedLocked's doc comment for the real bug this
+	// fixes.
 	receive := func(packets [][]byte, sizes []int, eps []conn.Endpoint) (int, error) {
 		for {
 			b.mu.Lock()
-			cases := make([]reflect.SelectCase, 0, len(b.peerChans)+1)
+			cases := make([]reflect.SelectCase, 0, len(b.peerChans)+2)
 			for _, ch := range b.peerChans {
 				cases = append(cases, reflect.SelectCase{Dir: reflect.SelectRecv, Chan: reflect.ValueOf(ch)})
 			}
+			changed := b.peersChanged
 			b.mu.Unlock()
 
+			changedIdx := len(cases)
+			cases = append(cases, reflect.SelectCase{Dir: reflect.SelectRecv, Chan: reflect.ValueOf(changed)})
 			doneIdx := len(cases)
 			cases = append(cases, reflect.SelectCase{Dir: reflect.SelectRecv, Chan: reflect.ValueOf(done)})
 
 			chosen, recv, ok := reflect.Select(cases)
 			if chosen == doneIdx {
 				return 0, net.ErrClosed
+			}
+			if chosen == changedIdx {
+				continue // peer set changed — rebuild cases against current state
 			}
 			if !ok {
 				// That peer's channel was closed (readLoop exited,

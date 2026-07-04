@@ -151,6 +151,78 @@ func TestBind_SurvivesCloseOpenCycle(t *testing.T) {
 	require.NoError(t, <-errCh)
 }
 
+// TestBind_ReceiveWakesUpWhenPeerAddedAfterOpen is a regression test for a
+// real bug found during live two-peer TUN testing: Open() is normally
+// called (via wireguard-go's listen_port-triggered BindUpdate) before any
+// peer has ever been added — that's the standard startup order,
+// Device.Up() runs before meshclient.Peers.ConnectToNewMembers's first
+// AddPeer. If the receive() call returned by Open is already blocked in
+// reflect.Select on that empty snapshot (zero peer channels, just `done`)
+// by the time AddPeer creates the first peer's channel, the original
+// implementation could never learn about it: reflect.Select only watches
+// the exact channels it was handed when called, and the case list only
+// gets rebuilt on the *next* call to receive — which never happens,
+// because this one never returns. Confirmed live: WireGuard handshake
+// frames demonstrably arriving at the listener's Bind.readLoop, yet
+// wireguard-go itself never observed them, because its one receive
+// goroutine was permanently stuck on a peer-less snapshot from before the
+// peer existed.
+func TestBind_ReceiveWakesUpWhenPeerAddedAfterOpen(t *testing.T) {
+	const peerID = domain.PeerID("peer-b")
+
+	bindB := wgmesh.NewBind()
+	t.Cleanup(func() { bindB.Close() })
+
+	// Open (and start receiving) strictly before any peer exists —
+	// reproduces the real startup order.
+	fnsB, _, err := bindB.Open(0)
+	require.NoError(t, err)
+	require.Len(t, fnsB, 1)
+
+	packets := [][]byte{make([]byte, 2000)}
+	sizes := make([]int, 1)
+	eps := make([]wgconn.Endpoint, 1)
+
+	done := make(chan struct{})
+	var n int
+	var recvErr error
+	go func() {
+		n, recvErr = fnsB[0](packets, sizes, eps)
+		close(done)
+	}()
+
+	// Give the goroutine above a real chance to actually enter
+	// reflect.Select on the peer-less snapshot before a peer shows up —
+	// the bug only reproduces if the blocking call happens first.
+	time.Sleep(50 * time.Millisecond)
+
+	clientConn, serverConn := net.Pipe()
+	bindA := wgmesh.NewBind()
+	t.Cleanup(func() { bindA.Close() })
+
+	addPeerErrCh := make(chan error, 1)
+	go func() { addPeerErrCh <- bindA.AddPeer(peerID, clientConn, true) }()
+	require.NoError(t, bindB.AddPeer("peer-a", serverConn, false))
+	require.NoError(t, <-addPeerErrCh)
+
+	payload := []byte("packet from a peer added after Open")
+	sendErrCh := make(chan error, 1)
+	go func() {
+		sendErrCh <- bindA.Send([][]byte{payload}, wgmesh.Endpoint{Peer: peerID})
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("receive() never woke up after a peer was added post-Open — the exact deadlock found live")
+	}
+
+	require.NoError(t, recvErr)
+	require.Equal(t, 1, n)
+	require.Equal(t, payload, packets[0][:sizes[0]])
+	require.NoError(t, <-sendErrCh)
+}
+
 func TestBind_SendToUnknownPeer(t *testing.T) {
 	bind := wgmesh.NewBind()
 	t.Cleanup(func() { bind.Close() })
