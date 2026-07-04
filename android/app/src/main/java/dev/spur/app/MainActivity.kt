@@ -58,10 +58,19 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+// SETTINGS_PREFS holds just server/STUN address — the two fields every
+// other screen needs and that otherwise had to be retyped on every cold
+// start (real friction hit repeatedly during manual testing this
+// session). Everything else on screen (peer-id/room/port fields, mesh
+// network name) is per-session by design, not settings.
+private const val SETTINGS_PREFS = "spur_settings"
+
 @Composable
 fun SkeletonScreen(coreVersion: String, client: Client) {
-    var serverAddr by remember { mutableStateOf("") }
-    var stunAddr by remember { mutableStateOf("") }
+    val context = LocalContext.current
+    val prefs = remember { context.getSharedPreferences(SETTINGS_PREFS, android.content.Context.MODE_PRIVATE) }
+    var serverAddr by remember { mutableStateOf(prefs.getString("server_addr", "") ?: "") }
+    var stunAddr by remember { mutableStateOf(prefs.getString("stun_addr", "") ?: "") }
     var status by remember { mutableStateOf("не зарегистрирован") }
     val scope = rememberCoroutineScope()
 
@@ -81,7 +90,7 @@ fun SkeletonScreen(coreVersion: String, client: Client) {
         Text("peer id: ${client.selfID()}")
         OutlinedTextField(
             value = serverAddr,
-            onValueChange = { serverAddr = it },
+            onValueChange = { serverAddr = it; prefs.edit().putString("server_addr", it).apply() },
             label = { Text("server address") },
         )
         Button(onClick = {
@@ -102,7 +111,7 @@ fun SkeletonScreen(coreVersion: String, client: Client) {
         Text("Port forward")
         OutlinedTextField(
             value = stunAddr,
-            onValueChange = { stunAddr = it },
+            onValueChange = { stunAddr = it; prefs.edit().putString("stun_addr", it).apply() },
             label = { Text("stun address") },
         )
         OutlinedTextField(
@@ -183,7 +192,6 @@ fun SkeletonScreen(coreVersion: String, client: Client) {
         var ftStatus by remember { mutableStateOf("остановлено") }
         var ftCode by remember { mutableStateOf("") }
         var activeTransfer by remember { mutableStateOf<Transfer?>(null) }
-        val context = LocalContext.current
 
         val pickSource = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
             if (uri != null) {
