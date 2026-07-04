@@ -213,6 +213,11 @@ possible (see [Installation](#installation) for how to update).
 
 ## GUI client
 
+> **Prebuilt only for Linux/amd64 right now.** macOS and Windows need to
+> build it from source (`make build`) on that platform — see below for
+> why a prebuilt binary can't just be cross-compiled the way `spur`/
+> `spur-server` are.
+
 `spur-gui` is a desktop GUI covering the same operations as the CLI
 (identity, port forwarding, file transfer, rooms, mesh VPN) as a window
 with tabs instead of subcommands — for anyone who'd rather click buttons
@@ -417,7 +422,7 @@ own process's locale.
 | Command | What it does |
 |---|---|
 | `spur-server` | Rendezvous server (control-plane + STUN + relay fallback); flags live directly on the root command, not a subcommand |
-| `spur-gui` | Desktop GUI covering the same client operations as a window with tabs (see [GUI client](#gui-client)) |
+| `spur-gui` | Desktop GUI covering the same client operations as a window with tabs (see [GUI client](#gui-client) — prebuilt only for Linux/amd64 right now) |
 | `spur whoami` | Your own peer-id, no network access |
 | `spur register` | Diagnostic: register with the server, show the observed address |
 | `spur connect` | Forward a local port to a peer's service (`expose`) |
