@@ -238,6 +238,15 @@ that can't be produced by cross-compiling from one machine the way the
 pure-Go CLI/server binaries can. Build it natively on whichever OS you
 want to run it on.
 
+On Linux, `make install` also adds spur-gui to your desktop's
+applications menu (a `~/.local/share/applications/spur-gui.desktop`
+entry with the product's own icon) — look for "spur" alongside your
+other installed apps instead of launching it from a terminal every time.
+
+Uses the product's own logo for its window/taskbar icon and a dark
+navy/teal color theme matching the Android app — the same visual
+identity across every client, not a separately invented desktop look.
+
 The window has five tabs:
 
 - **Identity** — your peer-id (with a copy button), the shared server/

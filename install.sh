@@ -49,18 +49,51 @@ download_binary() {
 	name="$2"
 	url="https://github.com/$REPO/releases/latest/download/${name}-${platform}"
 	echo "downloading $url"
-	# -C - resumes from wherever a previous attempt left off instead of
-	# restarting from byte zero, and --retry-all-errors also retries on
-	# errors curl wouldn't otherwise consider transient (e.g. exit code
-	# 23, "failed writing body" — the actual failure seen on a real
-	# flaky/unstable connection: spur-server is the larger of the two
-	# binaries and consistently died partway through at a different byte
-	# offset each attempt, never the same one twice, so it wasn't a fixed
-	# protocol/MTU boundary — just an ordinary dropped connection on a
-	# multi-second transfer). Plain --retry alone only retries connection-
-	# level failures, not write errors, so it wouldn't have helped here.
-	curl -fL --retry 5 --retry-delay 2 --retry-all-errors -C - "$url" -o "$INSTALL_DIR/$name"
-	chmod +x "$INSTALL_DIR/$name"
+	# Downloads into a .partial sidecar, not straight to $INSTALL_DIR/$name:
+	# -C - resumes that sidecar from wherever a previous attempt left off
+	# rather than restarting from byte zero across retries (see below for
+	# why --retry-all-errors is also needed for this to matter), and only
+	# `mv` replaces the real destination once the download actually
+	# finishes — same reasoning as install_binary's rm-before-cp: `mv`
+	# is a rename(2), which atomically replaces $INSTALL_DIR/$name even if
+	# a currently-running process (e.g. a long-lived "spur join" mesh
+	# session) still has the old binary open/executing, instead of
+	# failing with "Text file busy" the way writing straight into that
+	# path would.
+	#
+	# --retry-all-errors also retries on errors curl wouldn't otherwise
+	# consider transient (e.g. exit code 23, "failed writing body" — the
+	# actual failure seen on a real flaky/unstable connection: spur-server
+	# is the larger of the two binaries and consistently died partway
+	# through at a different byte offset each attempt, never the same one
+	# twice, so it wasn't a fixed protocol/MTU boundary — just an ordinary
+	# dropped connection on a multi-second transfer). Plain --retry alone
+	# only retries connection-level failures, not write errors, so it
+	# wouldn't have helped here.
+	partial="$INSTALL_DIR/$name.partial"
+	curl -fL --retry 5 --retry-delay 2 --retry-all-errors -C - "$url" -o "$partial"
+	chmod +x "$partial"
+	mv -f "$partial" "$INSTALL_DIR/$name"
+}
+
+# install_binary copies src to dst, replacing whatever's already there —
+# rm before cp, not cp -f (which just truncates-and-rewrites the
+# existing inode in place): a currently-running process still executing
+# the old binary at dst (e.g. a long-lived "spur join" mesh session,
+# found live on this exact machine, upgrading spur/spur-gui/spur-server
+# while one was already running) holds that inode open, and overwriting
+# it in place fails with "Text file busy" — or worse, could corrupt the
+# running process's mapped pages on some platforms. Unlinking dst first
+# and creating a fresh inode leaves the running process's already-open
+# fd pointing at the old (now nameless but still valid) inode, unaffected,
+# while the new binary takes over the name for the next invocation — the
+# same trick every real package manager uses to upgrade a running binary.
+install_binary() {
+	src="$1"
+	dst="$2"
+	rm -f "$dst"
+	cp "$src" "$dst"
+	chmod +x "$dst"
 }
 
 # add_path_line_once appends line to file exactly once, creating the
@@ -80,17 +113,15 @@ add_path_line_once() {
 mkdir -p "$INSTALL_DIR"
 
 if [ -n "${SPUR_LOCAL_BUILD_DIR:-}" ]; then
-	cp "$SPUR_LOCAL_BUILD_DIR/spur" "$INSTALL_DIR/spur"
-	cp "$SPUR_LOCAL_BUILD_DIR/spur-server" "$INSTALL_DIR/spur-server"
-	chmod +x "$INSTALL_DIR/spur" "$INSTALL_DIR/spur-server"
+	install_binary "$SPUR_LOCAL_BUILD_DIR/spur" "$INSTALL_DIR/spur"
+	install_binary "$SPUR_LOCAL_BUILD_DIR/spur-server" "$INSTALL_DIR/spur-server"
 	# spur-gui only exists here when it was actually built locally
 	# (`make build`/`make install`) — it's never downloaded below, since
 	# GitHub releases don't carry it yet (see Makefile's release target
 	# comment: Fyne needs a native cgo build per platform, not something
 	# this script's prebuilt-binary download path can offer today).
 	if [ -f "$SPUR_LOCAL_BUILD_DIR/spur-gui" ]; then
-		cp "$SPUR_LOCAL_BUILD_DIR/spur-gui" "$INSTALL_DIR/spur-gui"
-		chmod +x "$INSTALL_DIR/spur-gui"
+		install_binary "$SPUR_LOCAL_BUILD_DIR/spur-gui" "$INSTALL_DIR/spur-gui"
 	fi
 else
 	platform=$(detect_platform)
@@ -101,6 +132,41 @@ fi
 echo "installed spur and spur-server to $INSTALL_DIR"
 if [ -f "$INSTALL_DIR/spur-gui" ]; then
 	echo "installed spur-gui (GUI client) to $INSTALL_DIR"
+	# Applications-menu entry: only meaningful on Linux (freedesktop
+	# .desktop files — macOS needs a .app bundle instead, out of scope),
+	# and only when this is a local build (SPUR_LOCAL_BUILD_DIR): the
+	# icon has to come from an actual image file on disk — a .desktop
+	# Icon= key can't point inside the binary the way go:embed does —
+	# and the curl|sh download path never has spur-gui or the repo tree
+	# it'd need the icon from in the first place (see the comment above).
+	if [ "$(uname -s)" = "Linux" ] && [ -n "${SPUR_LOCAL_BUILD_DIR:-}" ]; then
+		script_dir=$(cd "$(dirname "$0")" && pwd)
+		icon_src="$script_dir/cmd/spur-gui/assets/icon.png"
+		if [ -f "$icon_src" ]; then
+			data_dir="${XDG_DATA_HOME:-$HOME/.local/share}"
+			icon_dir="$data_dir/spur"
+			apps_dir="$data_dir/applications"
+			mkdir -p "$icon_dir" "$apps_dir"
+			cp "$icon_src" "$icon_dir/icon.png"
+			cat > "$apps_dir/spur-gui.desktop" <<DESKTOPEOF
+[Desktop Entry]
+Type=Application
+Name=spur
+Name[ru]=spur
+Comment=P2P tunnel and mesh VPN client
+Comment[ru]=P2P-туннель и mesh VPN клиент
+Exec=$INSTALL_DIR/spur-gui
+Icon=$icon_dir/icon.png
+Terminal=false
+Categories=Network;
+DESKTOPEOF
+			# Not fatal if missing — GNOME/KDE both also just watch the
+			# applications directory directly and pick up new .desktop
+			# files without it; this only speeds up some desktops noticing.
+			command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database "$apps_dir" >/dev/null 2>&1
+			echo "added spur-gui to the applications menu ($apps_dir/spur-gui.desktop)"
+		fi
+	fi
 fi
 
 case ":$PATH:" in
