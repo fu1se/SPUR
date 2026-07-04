@@ -49,7 +49,17 @@ download_binary() {
 	name="$2"
 	url="https://github.com/$REPO/releases/latest/download/${name}-${platform}"
 	echo "downloading $url"
-	curl -fsSL "$url" -o "$INSTALL_DIR/$name"
+	# -C - resumes from wherever a previous attempt left off instead of
+	# restarting from byte zero, and --retry-all-errors also retries on
+	# errors curl wouldn't otherwise consider transient (e.g. exit code
+	# 23, "failed writing body" — the actual failure seen on a real
+	# flaky/unstable connection: spur-server is the larger of the two
+	# binaries and consistently died partway through at a different byte
+	# offset each attempt, never the same one twice, so it wasn't a fixed
+	# protocol/MTU boundary — just an ordinary dropped connection on a
+	# multi-second transfer). Plain --retry alone only retries connection-
+	# level failures, not write errors, so it wouldn't have helped here.
+	curl -fL --retry 5 --retry-delay 2 --retry-all-errors -C - "$url" -o "$INSTALL_DIR/$name"
 	chmod +x "$INSTALL_DIR/$name"
 }
 
