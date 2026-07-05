@@ -76,6 +76,8 @@ type catalog struct {
 	MeshStatusJoined string
 	MeshStatusFailed string
 	MeshMembers      string
+	MeshTokenToShare string
+	MeshCopyToken    string
 
 	ErrorTitle string
 }
@@ -150,6 +152,8 @@ var ruCatalog = catalog{
 	MeshStatusJoined: "Подключено, CIDR: %s",
 	MeshStatusFailed: "Ошибка: %s",
 	MeshMembers:      "Участники: %s",
+	MeshTokenToShare: "Инвайт-токен (сообщите второму участнику): %s",
+	MeshCopyToken:    "Копировать токен",
 
 	ErrorTitle: "Ошибка",
 }
@@ -224,6 +228,8 @@ var enCatalog = catalog{
 	MeshStatusJoined: "Connected, CIDR: %s",
 	MeshStatusFailed: "Error: %s",
 	MeshMembers:      "Members: %s",
+	MeshTokenToShare: "Invite token (share with the second participant): %s",
+	MeshCopyToken:    "Copy token",
 
 	ErrorTitle: "Error",
 }

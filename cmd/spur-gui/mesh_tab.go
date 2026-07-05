@@ -32,6 +32,24 @@ func (g *guiApp) buildMeshTab() fyne.CanvasObject {
 	membersLabel := widget.NewLabel("")
 	membersLabel.Wrapping = fyne.TextWrapWord
 
+	// Shown for both a brand-new network (usecase.JoinNetwork
+	// auto-creates one when the name doesn't exist yet, minting a fresh
+	// token — see CLAUDE.md's "Инвайт-токены для JoinNetwork") and an
+	// existing one (the token doesn't change, so re-displaying it here
+	// is harmless and one less special case to handle): without this,
+	// the GUI had no way at all to hand a newly created network's token
+	// to the second participant — a real gap, since "leave the invite
+	// token field empty and click Join" (auto-create) is the only way
+	// to create a network in this tab, there's no separate "Create"
+	// button.
+	tokenLabel := widget.NewLabel("")
+	tokenLabel.Wrapping = fyne.TextWrapWord
+	var currentToken string
+	copyTokenBtn := widget.NewButtonWithIcon(cat.MeshCopyToken, theme.ContentCopyIcon(), func() {
+		g.app.Clipboard().SetContent(currentToken)
+	})
+	copyTokenBtn.Hide()
+
 	var active *guiapp.MeshSession
 
 	var joinBtn, leaveBtn *widget.Button
@@ -48,6 +66,8 @@ func (g *guiApp) buildMeshTab() fyne.CanvasObject {
 		joinBtn.Disable()
 		setStatus(statusLabel, cat.PFStatusEstablish)
 		membersLabel.SetText("")
+		tokenLabel.SetText("")
+		copyTokenBtn.Hide()
 
 		serverAddr, stunAddr := g.serverAddr(), g.stunAddr()
 		token := tokenEntry.Text
@@ -69,6 +89,11 @@ func (g *guiApp) buildMeshTab() fyne.CanvasObject {
 						names = append(names, m.PeerID+" ("+m.MeshIP+")")
 					}
 					membersLabel.SetText(fmt.Sprintf(cat.MeshMembers, strings.Join(names, ", ")))
+					if preview.InviteToken != "" {
+						currentToken = preview.InviteToken
+						tokenLabel.SetText(fmt.Sprintf(cat.MeshTokenToShare, preview.InviteToken))
+						copyTokenBtn.Show()
+					}
 				})
 			}
 
@@ -116,6 +141,8 @@ func (g *guiApp) buildMeshTab() fyne.CanvasObject {
 		verboseCheck,
 		container.NewHBox(joinBtn, leaveBtn),
 		statusLabel,
+		tokenLabel,
+		copyTokenBtn,
 		membersLabel,
 	)
 	return container.NewVScroll(container.NewPadded(widget.NewCard("", "", form)))
