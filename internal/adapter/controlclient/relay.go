@@ -17,6 +17,14 @@ func (c *Client) OpenChannel(ctx context.Context, sessionID string) (io.ReadWrit
 		return nil, fmt.Errorf("controlclient: open stream: %w", err)
 	}
 
+	// Bind ctx only around the header writes: unlike every other RPC
+	// here, the stream itself outlives this call (it becomes the relay
+	// data channel), so the deadline must be cleared again before the
+	// stream is handed off — release does exactly that (see
+	// bindStreamToContext's doc comment).
+	release := bindStreamToContext(ctx, stream)
+	defer release()
+
 	if err := controlproto.WriteMethod(stream, controlproto.MethodRelay); err != nil {
 		_ = stream.Close()
 		return nil, err

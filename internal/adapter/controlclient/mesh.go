@@ -17,6 +17,7 @@ func (c *Client) JoinNetwork(ctx context.Context, networkName, inviteToken strin
 		return domain.Network{}, fmt.Errorf("controlclient: open stream: %w", err)
 	}
 	defer stream.Close()
+	defer bindStreamToContext(ctx, stream)()
 
 	if err := controlproto.WriteMethod(stream, controlproto.MethodJoinNetwork); err != nil {
 		return domain.Network{}, err

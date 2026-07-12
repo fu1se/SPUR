@@ -18,6 +18,7 @@ func (c *Client) PublishCandidates(ctx context.Context, sessionID string, self d
 		return fmt.Errorf("controlclient: open stream: %w", err)
 	}
 	defer stream.Close()
+	defer bindStreamToContext(ctx, stream)()
 
 	if err := controlproto.WriteMethod(stream, controlproto.MethodPublishCandidates); err != nil {
 		return err
@@ -44,6 +45,7 @@ func (c *Client) AwaitPeerCandidates(ctx context.Context, sessionID string, peer
 		return domain.CandidateSet{}, fmt.Errorf("controlclient: open stream: %w", err)
 	}
 	defer stream.Close()
+	defer bindStreamToContext(ctx, stream)()
 
 	if err := controlproto.WriteMethod(stream, controlproto.MethodAwaitCandidates); err != nil {
 		return domain.CandidateSet{}, err

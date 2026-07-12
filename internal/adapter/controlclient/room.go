@@ -18,6 +18,7 @@ func (c *Client) CreateRoom(ctx context.Context, roomName string, pub domain.Pub
 		return "", fmt.Errorf("controlclient: open stream: %w", err)
 	}
 	defer stream.Close()
+	defer bindStreamToContext(ctx, stream)()
 
 	if err := controlproto.WriteMethod(stream, controlproto.MethodCreateRoom); err != nil {
 		return "", err
@@ -48,6 +49,7 @@ func (c *Client) JoinRoom(ctx context.Context, roomName, inviteToken string, pub
 		return fmt.Errorf("controlclient: open stream: %w", err)
 	}
 	defer stream.Close()
+	defer bindStreamToContext(ctx, stream)()
 
 	if err := controlproto.WriteMethod(stream, controlproto.MethodJoinRoom); err != nil {
 		return err
@@ -78,6 +80,7 @@ func (c *Client) ResolveRoom(ctx context.Context, roomName string, pub domain.Pu
 		return "", fmt.Errorf("controlclient: open stream: %w", err)
 	}
 	defer stream.Close()
+	defer bindStreamToContext(ctx, stream)()
 
 	if err := controlproto.WriteMethod(stream, controlproto.MethodResolveRoom); err != nil {
 		return "", err

@@ -9,7 +9,6 @@ import (
 	"golang.zx2c4.com/wireguard/device"
 
 	"github.com/fu1se/spur/internal/adapter/cli"
-	"github.com/fu1se/spur/internal/adapter/controlclient"
 	"github.com/fu1se/spur/internal/adapter/meshclient"
 	"github.com/fu1se/spur/internal/adapter/rendezvous"
 	"github.com/fu1se/spur/internal/adapter/wgmesh"
@@ -58,23 +57,21 @@ func join(ctx context.Context, serverAddr, stunAddr, networkName, inviteToken, i
 	self := domain.DerivePeerID(id.PublicKey)
 	onSelfID(string(self))
 
-	controlTLSConf, err := rendezvous.ControlClientTLS(serverAddr, "")
-	if err != nil {
-		return err
+	// Membership owns the control-plane connection and re-dials it when
+	// it dies (see its doc comment) — before this, a network drop left
+	// the polling loop below retrying JoinNetwork on the same dead QUIC
+	// connection forever.
+	membership := &meshclient.Membership{
+		ServerAddr:        serverAddr,
+		IdentityPath:      resolvedIdentityPath,
+		ClientVersion:     cli.Version(),
+		NetworkName:       networkName,
+		InviteToken:       inviteToken,
+		OnVersionMismatch: rendezvous.VersionMismatchFunc(onVersionMismatch),
 	}
-	joinClient, err := controlclient.Dial(ctx, serverAddr, controlTLSConf, infra.DefaultQUICConfig())
-	if err != nil {
-		return fmt.Errorf("app: dial control-plane: %w", err)
-	}
-	defer joinClient.Close()
+	defer membership.Close()
 
-	regResult, err := joinClient.Register(ctx, id.PublicKey, cli.Version())
-	if err != nil {
-		return fmt.Errorf("app: register: %w", err)
-	}
-	rendezvous.WarnIfVersionMismatch(cli.Version(), regResult.ServerVersion, rendezvous.VersionMismatchFunc(onVersionMismatch))
-
-	network, err := joinClient.JoinNetwork(ctx, networkName, inviteToken, id.PublicKey)
+	network, err := membership.Fetch(ctx)
 	if err != nil {
 		return fmt.Errorf("app: join network: %w", err)
 	}
@@ -117,8 +114,9 @@ func join(ctx context.Context, serverAddr, stunAddr, networkName, inviteToken, i
 		case <-ticker.C:
 			// Already a member by now, so the token isn't re-checked
 			// server-side — reusing it here is just convenient, not
-			// required.
-			network, err := joinClient.JoinNetwork(ctx, networkName, inviteToken, id.PublicKey)
+			// required. A failed Fetch dropped its connection and the
+			// next tick re-dials, so this really is transient now.
+			network, err := membership.Fetch(ctx)
 			if err != nil {
 				continue // transient — retry next tick
 			}

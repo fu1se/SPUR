@@ -7,7 +7,6 @@ import (
 
 	"golang.zx2c4.com/wireguard/device"
 
-	"github.com/fu1se/spur/internal/adapter/controlclient"
 	"github.com/fu1se/spur/internal/adapter/meshclient"
 	"github.com/fu1se/spur/internal/adapter/rendezvous"
 	"github.com/fu1se/spur/internal/adapter/wgmesh"
@@ -100,23 +99,21 @@ func (c *Client) JoinMesh(serverAddr, stunAddr, networkName, inviteToken string,
 	}
 	self := domain.DerivePeerID(id.PublicKey)
 
-	controlTLSConf, err := rendezvous.ControlClientTLS(serverAddr, c.trustStorePath)
-	if err != nil {
-		return nil, explain(err)
-	}
-	joinClient, err := controlclient.Dial(ctx, serverAddr, controlTLSConf, infra.DefaultQUICConfig())
-	if err != nil {
-		return nil, explain(fmt.Errorf("spurmobile: dial control-plane: %w", err))
-	}
-
-	if _, err := joinClient.Register(ctx, id.PublicKey, Version()); err != nil {
-		joinClient.Close()
-		return nil, explain(fmt.Errorf("spurmobile: register: %w", err))
+	// Membership owns the control-plane connection and re-dials it after
+	// a network drop (see meshclient.Membership) — mirrors
+	// cmd/spur/mesh.go's join loop.
+	membership := &meshclient.Membership{
+		ServerAddr:     serverAddr,
+		IdentityPath:   c.identityPath,
+		TrustStorePath: c.trustStorePath,
+		ClientVersion:  Version(),
+		NetworkName:    networkName,
+		InviteToken:    inviteToken,
 	}
 
-	network, err := joinClient.JoinNetwork(ctx, networkName, inviteToken, id.PublicKey)
+	network, err := membership.Fetch(ctx)
 	if err != nil {
-		joinClient.Close()
+		membership.Close()
 		return nil, explain(fmt.Errorf("spurmobile: join network: %w", err))
 	}
 
@@ -124,18 +121,18 @@ func (c *Client) JoinMesh(serverAddr, stunAddr, networkName, inviteToken string,
 	logger := device.NewLogger(device.LogLevelError, "spur: ")
 	dev, err := wgmesh.NewDeviceFromFD(bind, tunFd, logger)
 	if err != nil {
-		joinClient.Close()
+		membership.Close()
 		return nil, explain(fmt.Errorf("spurmobile: wrap tun device: %w", err))
 	}
 
 	if err := dev.IpcSet(wgmesh.BuildDeviceConfig(id.PrivateKey)); err != nil {
 		dev.Close()
-		joinClient.Close()
+		membership.Close()
 		return nil, explain(fmt.Errorf("spurmobile: configure wireguard device: %w", err))
 	}
 	if err := dev.Up(); err != nil {
 		dev.Close()
-		joinClient.Close()
+		membership.Close()
 		return nil, explain(fmt.Errorf("spurmobile: bring up tun device: %w", err))
 	}
 
@@ -146,7 +143,7 @@ func (c *Client) JoinMesh(serverAddr, stunAddr, networkName, inviteToken string,
 	session := &MeshSession{cancel: cancel, done: make(chan error, 1)}
 
 	go func() {
-		defer joinClient.Close()
+		defer membership.Close()
 		defer dev.Close()
 		defer mesh.CloseAll()
 
@@ -160,8 +157,10 @@ func (c *Client) JoinMesh(serverAddr, stunAddr, networkName, inviteToken string,
 			case <-ticker.C:
 				// Already a member by now, so the token isn't re-checked
 				// server-side — reusing it here is just convenient, not
-				// required (mirrors cmd/spur/mesh.go's join loop).
-				network, err := joinClient.JoinNetwork(sessionCtx, networkName, inviteToken, id.PublicKey)
+				// required (mirrors cmd/spur/mesh.go's join loop). A
+				// failed Fetch dropped its connection and the next tick
+				// re-dials — see meshclient.Membership.
+				network, err := membership.Fetch(sessionCtx)
 				if err != nil {
 					continue // transient — retry next tick
 				}

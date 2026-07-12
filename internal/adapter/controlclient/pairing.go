@@ -18,6 +18,7 @@ func (c *Client) RegisterPairingCode(ctx context.Context, pub domain.PublicKey) 
 		return "", fmt.Errorf("controlclient: open stream: %w", err)
 	}
 	defer stream.Close()
+	defer bindStreamToContext(ctx, stream)()
 
 	if err := controlproto.WriteMethod(stream, controlproto.MethodRegisterPairingCode); err != nil {
 		return "", err
@@ -44,6 +45,7 @@ func (c *Client) ResolvePairingCode(ctx context.Context, code string, pub domain
 		return "", fmt.Errorf("controlclient: open stream: %w", err)
 	}
 	defer stream.Close()
+	defer bindStreamToContext(ctx, stream)()
 
 	if err := controlproto.WriteMethod(stream, controlproto.MethodResolvePairingCode); err != nil {
 		return "", err
@@ -73,6 +75,7 @@ func (c *Client) AwaitPairingCodeUse(ctx context.Context, code string) (domain.P
 		return "", fmt.Errorf("controlclient: open stream: %w", err)
 	}
 	defer stream.Close()
+	defer bindStreamToContext(ctx, stream)()
 
 	if err := controlproto.WriteMethod(stream, controlproto.MethodAwaitPairingCodeUse); err != nil {
 		return "", err
