@@ -29,7 +29,7 @@ func newConnectCommand(deps ClientDependencies, defaults ClientDefaults) *cobra.
 			}
 			return deps.Connect(cmd.Context(), serverAddr, stunAddr, peerID, roomName, identityPath, localPort, func(selfID string) {
 				cmd.Printf(msg().SelfIDPrinted, selfID)
-			}, newCodePrinter(cmd), newVersionWarningPrinter(cmd))
+			}, newCodePrinter(cmd), newVersionWarningPrinter(cmd), newReconnectPrinter(cmd))
 		},
 	}
 

@@ -19,8 +19,10 @@ import (
 // counterpart via a persistent room instead. onProgress is forwarded
 // straight into usecase.SendFiles.OnProgress — see cli.ProgressFunc's
 // doc comment for why the rendering itself lives in the cli package, not
-// here.
-func send(ctx context.Context, serverAddr, stunAddr, counterpartID, roomName, identityPath, path string, onSelfID func(string), onProgress cli.ProgressFunc, onCode cli.OnCodeFunc, onVersionMismatch cli.VersionMismatchFunc) error {
+// here. A network drop mid-transfer reconnects and retries (see
+// rendezvous.RunPersistent); the receiving side's resume support means a
+// retried transfer picks up from what already arrived, not from zero.
+func send(ctx context.Context, serverAddr, stunAddr, counterpartID, roomName, identityPath, path string, onSelfID func(string), onProgress cli.ProgressFunc, onCode cli.OnCodeFunc, onVersionMismatch cli.VersionMismatchFunc, onReconnect cli.OnReconnectFunc) error {
 	// Checked up front, before rendezvous: usecase.SendFiles only
 	// discovers a bad local path (typo, doesn't exist, no permission)
 	// after the full P2P handshake completes, which can take up to a
@@ -32,33 +34,37 @@ func send(ctx context.Context, serverAddr, stunAddr, counterpartID, roomName, id
 	}
 
 	resolve := rendezvous.CounterpartResolverFor(counterpartID, roomName, rendezvous.OnCodeFunc(onCode))
-	tun, _, _, err := rendezvous.Establish(ctx, serverAddr, stunAddr, identityPath, "", cli.Version(), resolve, onSelfID, rendezvous.VersionMismatchFunc(onVersionMismatch))
-	if err != nil {
-		return err
-	}
-	defer tun.Close()
-
-	return usecase.SendFiles{Source: localfs.Source{Path: path}, Tunnel: tun.Conn, OnProgress: usecase.TransferProgress(onProgress)}.Run(ctx)
+	return rendezvous.RunPersistent(ctx, serverAddr, stunAddr, identityPath, "", cli.Version(), resolve, onSelfID, rendezvous.VersionMismatchFunc(onVersionMismatch), rendezvous.OnReconnectFunc(onReconnect),
+		func(ctx context.Context, tun *rendezvous.Tunnel) error {
+			return usecase.SendFiles{Source: localfs.Source{Path: path}, Tunnel: tun.Conn, OnProgress: usecase.TransferProgress(onProgress)}.Run(ctx)
+		})
 }
 
 // receive is "spur receive": accept whatever counterpart streams via
 // "spur send" and write it under destDir, recreating the sender's relative
 // directory structure. counterpartID, roomName, onCode: see send.
 // onProgress: see send. onResumeOffer is forwarded into
-// usecase.ReceiveFiles.OnResumeOffer — see cli.ResumeOfferFunc's doc
-// comment.
-func receive(ctx context.Context, serverAddr, stunAddr, counterpartID, roomName, identityPath, destDir string, onSelfID func(string), onProgress cli.ProgressFunc, onCode cli.OnCodeFunc, onResumeOffer cli.ResumeOfferFunc, onVersionMismatch cli.VersionMismatchFunc) error {
+// usecase.ReceiveFiles.OnResumeOffer — but only for the first attempt:
+// when an automatic reconnect retries the transfer, the partial data on
+// disk came from this very transfer moments ago, so re-asking the user
+// "resume?" would be noise (and, worse, block the retry on a prompt
+// nobody may be around to answer) — retries always resume.
+func receive(ctx context.Context, serverAddr, stunAddr, counterpartID, roomName, identityPath, destDir string, onSelfID func(string), onProgress cli.ProgressFunc, onCode cli.OnCodeFunc, onResumeOffer cli.ResumeOfferFunc, onVersionMismatch cli.VersionMismatchFunc, onReconnect cli.OnReconnectFunc) error {
 	resolve := rendezvous.CounterpartResolverFor(counterpartID, roomName, rendezvous.OnCodeFunc(onCode))
-	tun, _, _, err := rendezvous.Establish(ctx, serverAddr, stunAddr, identityPath, "", cli.Version(), resolve, onSelfID, rendezvous.VersionMismatchFunc(onVersionMismatch))
-	if err != nil {
-		return err
-	}
-	defer tun.Close()
 
-	return usecase.ReceiveFiles{
-		Sink:          localfs.Sink{DestDir: destDir},
-		Tunnel:        tun.Conn,
-		OnProgress:    usecase.TransferProgress(onProgress),
-		OnResumeOffer: usecase.ResumeOffer(onResumeOffer),
-	}.Run(ctx)
+	attempt := 0
+	return rendezvous.RunPersistent(ctx, serverAddr, stunAddr, identityPath, "", cli.Version(), resolve, onSelfID, rendezvous.VersionMismatchFunc(onVersionMismatch), rendezvous.OnReconnectFunc(onReconnect),
+		func(ctx context.Context, tun *rendezvous.Tunnel) error {
+			attempt++
+			resume := usecase.ResumeOffer(onResumeOffer)
+			if attempt > 1 {
+				resume = func(int, int64, int64) bool { return true }
+			}
+			return usecase.ReceiveFiles{
+				Sink:          localfs.Sink{DestDir: destDir},
+				Tunnel:        tun.Conn,
+				OnProgress:    usecase.TransferProgress(onProgress),
+				OnResumeOffer: resume,
+			}.Run(ctx)
+		})
 }

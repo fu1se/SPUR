@@ -100,16 +100,17 @@ type ClientDependencies struct {
 	// for what that means), or roomName (see CreateRoom/JoinRoom — takes
 	// priority over peerID when both are somehow set, though the CLI
 	// layer rejects that combination before it gets here). onVersionMismatch:
-	// see VersionMismatchFunc. Blocks until ctx is cancelled or
-	// forwarding fails.
-	Connect func(ctx context.Context, serverAddr, stunAddr, peerID, roomName, identityPath string, localPort int, onSelfID func(selfID string), onCode OnCodeFunc, onVersionMismatch VersionMismatchFunc) error
+	// see VersionMismatchFunc. onReconnect: see OnReconnectFunc — a lost
+	// tunnel is re-established automatically, not fatal. Blocks until ctx
+	// is cancelled or forwarding fails unrecoverably.
+	Connect func(ctx context.Context, serverAddr, stunAddr, peerID, roomName, identityPath string, localPort int, onSelfID func(selfID string), onCode OnCodeFunc, onVersionMismatch VersionMismatchFunc, onReconnect OnReconnectFunc) error
 
 	// Expose is "spur expose": rendezvous with a counterpart, establish a
 	// P2P or relay session, and dial targetPort locally for every
 	// incoming tunnel stream. identityPath, onSelfID, peerID, roomName,
-	// onCode, onVersionMismatch: see Connect. Blocks until ctx is
-	// cancelled or serving fails.
-	Expose func(ctx context.Context, serverAddr, stunAddr, peerID, roomName, identityPath string, targetPort int, onSelfID func(selfID string), onCode OnCodeFunc, onVersionMismatch VersionMismatchFunc) error
+	// onCode, onVersionMismatch, onReconnect: see Connect. Blocks until
+	// ctx is cancelled or serving fails unrecoverably.
+	Expose func(ctx context.Context, serverAddr, stunAddr, peerID, roomName, identityPath string, targetPort int, onSelfID func(selfID string), onCode OnCodeFunc, onVersionMismatch VersionMismatchFunc, onReconnect OnReconnectFunc) error
 
 	// Whoami loads (or creates) the local identity and returns its peer
 	// ID, without any network access — the bootstrap step for learning
@@ -156,18 +157,21 @@ type ClientDependencies struct {
 	// (a file or a directory, walked recursively) through the tunnel to
 	// whoever runs "spur receive" against the same counterpart.
 	// identityPath, onSelfID, peerID, roomName, onCode,
-	// onVersionMismatch: see Connect. onProgress: see ProgressFunc.
-	// Blocks until the transfer finishes or fails.
-	Send func(ctx context.Context, serverAddr, stunAddr, peerID, roomName, identityPath, path string, onSelfID func(selfID string), onProgress ProgressFunc, onCode OnCodeFunc, onVersionMismatch VersionMismatchFunc) error
+	// onVersionMismatch, onReconnect: see Connect. onProgress: see
+	// ProgressFunc. Blocks until the transfer finishes or fails
+	// unrecoverably — a network drop mid-transfer reconnects and resumes.
+	Send func(ctx context.Context, serverAddr, stunAddr, peerID, roomName, identityPath, path string, onSelfID func(selfID string), onProgress ProgressFunc, onCode OnCodeFunc, onVersionMismatch VersionMismatchFunc, onReconnect OnReconnectFunc) error
 
 	// Receive is "spur receive": rendezvous with a counterpart and write
 	// whatever "spur send" streams through the tunnel under destDir,
 	// recreating the relative directory structure the sender walked.
 	// identityPath, onSelfID, peerID, roomName, onCode,
-	// onVersionMismatch: see Connect. onProgress: see ProgressFunc.
-	// onResumeOffer: see ResumeOfferFunc. Blocks until the transfer
-	// finishes or fails.
-	Receive func(ctx context.Context, serverAddr, stunAddr, peerID, roomName, identityPath, destDir string, onSelfID func(selfID string), onProgress ProgressFunc, onCode OnCodeFunc, onResumeOffer ResumeOfferFunc, onVersionMismatch VersionMismatchFunc) error
+	// onVersionMismatch, onReconnect: see Connect. onProgress: see
+	// ProgressFunc. onResumeOffer: see ResumeOfferFunc — only consulted
+	// on the first attempt; automatic reconnect attempts always resume
+	// (the partial data came from this very transfer moments ago).
+	// Blocks until the transfer finishes or fails unrecoverably.
+	Receive func(ctx context.Context, serverAddr, stunAddr, peerID, roomName, identityPath, destDir string, onSelfID func(selfID string), onProgress ProgressFunc, onCode OnCodeFunc, onResumeOffer ResumeOfferFunc, onVersionMismatch VersionMismatchFunc, onReconnect OnReconnectFunc) error
 
 	// SetLanguage is "spur lang": persists a UI language override (or
 	// clears it, for lang == "") to the config file for future

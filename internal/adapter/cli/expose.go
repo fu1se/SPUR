@@ -29,7 +29,7 @@ func newExposeCommand(deps ClientDependencies, defaults ClientDefaults) *cobra.C
 			}
 			return deps.Expose(cmd.Context(), serverAddr, stunAddr, peerID, roomName, identityPath, targetPort, func(selfID string) {
 				cmd.Printf(msg().SelfIDPrinted, selfID)
-			}, newCodePrinter(cmd), newVersionWarningPrinter(cmd))
+			}, newCodePrinter(cmd), newVersionWarningPrinter(cmd), newReconnectPrinter(cmd))
 		},
 	}
 

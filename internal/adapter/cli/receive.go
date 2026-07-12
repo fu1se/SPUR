@@ -29,7 +29,7 @@ func newReceiveCommand(deps ClientDependencies, defaults ClientDefaults) *cobra.
 			}
 			err := deps.Receive(cmd.Context(), serverAddr, stunAddr, peerID, roomName, identityPath, outDir, func(selfID string) {
 				cmd.Printf(msg().SelfIDPrinted, selfID)
-			}, newProgressPrinter(cmd.ErrOrStderr(), msg().ProgressVerbReceive), newCodePrinter(cmd), newResumePrompt(cmd), newVersionWarningPrinter(cmd))
+			}, newProgressPrinter(cmd.ErrOrStderr(), msg().ProgressVerbReceive), newCodePrinter(cmd), newResumePrompt(cmd), newVersionWarningPrinter(cmd), newReconnectPrinter(cmd))
 			progressDone(cmd.ErrOrStderr())
 			return err
 		},

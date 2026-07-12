@@ -116,6 +116,9 @@ type catalog struct {
 	// versioncheck.go
 	VersionMismatchWarning string // %s client, %s server
 
+	// reconnect.go
+	ReconnectNotice string // %v cause, %s delay
+
 	// friendlyerror.go
 	ExplainStunHeadline           string
 	ExplainStunHint               string
@@ -247,6 +250,8 @@ var ruCatalog = catalog{
 
 	VersionMismatchWarning: "Внимание: версия клиента (%s) отличается от версии сервера (%s) — некоторые функции могут работать некорректно. Обновите обе стороны до одной версии, если возникнут проблемы.\n",
 
+	ReconnectNotice: "Соединение потеряно (%v). Переподключение через %s...\n",
+
 	ExplainStunHeadline:           "Не удалось связаться со STUN-сервером (--stun-server).",
 	ExplainStunHint:               "Проверьте: адрес и порт указаны верно; порт открыт по UDP и на этой машине, и на сервере (файрвол/security group у облачного провайдера часто блокирует UDP по умолчанию, даже если TCP открыт).",
 	ExplainExchangeHeadline:       "Второй участник не ответил вовремя (или указан не тот собеседник).",
@@ -374,6 +379,8 @@ var enCatalog = catalog{
 	ResumePrompt:   "Resume where it left off? [Y/n] ",
 
 	VersionMismatchWarning: "Warning: client version (%s) differs from server version (%s) — some functionality may not work correctly. Update both sides to the same version if you run into trouble.\n",
+
+	ReconnectNotice: "Connection lost (%v). Reconnecting in %s...\n",
 
 	ExplainStunHeadline:           "Couldn't reach the STUN server (--stun-server).",
 	ExplainStunHint:               "Check: the address and port are correct; the port is open over UDP both on this machine and on the server (a cloud provider's firewall/security group often blocks UDP by default even when TCP is open).",

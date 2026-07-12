@@ -29,7 +29,7 @@ func newSendCommand(deps ClientDependencies, defaults ClientDefaults) *cobra.Com
 			}
 			err := deps.Send(cmd.Context(), serverAddr, stunAddr, peerID, roomName, identityPath, args[0], func(selfID string) {
 				cmd.Printf(msg().SelfIDPrinted, selfID)
-			}, newProgressPrinter(cmd.ErrOrStderr(), msg().ProgressVerbSend), newCodePrinter(cmd), newVersionWarningPrinter(cmd))
+			}, newProgressPrinter(cmd.ErrOrStderr(), msg().ProgressVerbSend), newCodePrinter(cmd), newVersionWarningPrinter(cmd), newReconnectPrinter(cmd))
 			progressDone(cmd.ErrOrStderr())
 			return err
 		},
