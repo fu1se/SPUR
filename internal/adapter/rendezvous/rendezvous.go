@@ -57,10 +57,19 @@ type Tunnel struct {
 	UDPConn       *net.UDPConn
 }
 
+// Close is nil-field-safe so tests (and any caller that only partially
+// constructed a Tunnel) can close one without a live network stack behind
+// every field.
 func (t *Tunnel) Close() {
-	_ = t.Conn.Close()
-	_ = t.ControlClient.Close()
-	_ = t.UDPConn.Close()
+	if t.Conn != nil {
+		_ = t.Conn.Close()
+	}
+	if t.ControlClient != nil {
+		_ = t.ControlClient.Close()
+	}
+	if t.UDPConn != nil {
+		_ = t.UDPConn.Close()
+	}
 }
 
 // ResolveIdentityPath falls back to infra.DefaultIdentityPath when the

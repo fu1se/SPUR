@@ -42,11 +42,18 @@ func (uc ForwardPort) Run(ctx context.Context) error {
 			return err
 		}
 
+		// OpenStream failing means the tunnel itself is gone (the QUIC
+		// connection or yamux session underneath died) — the transports
+		// never fail an individual open on a live conn under this
+		// usecase's own concurrency bound. This used to `continue`, which
+		// on a dead tunnel meant looping forever silently accepting local
+		// connections that go nowhere; returning lets the caller notice
+		// tunnel death and re-establish (see rendezvous.RunPersistent).
 		stream, err := uc.Tunnel.OpenStream(ctx)
 		if err != nil {
 			_ = local.Close()
 			<-sem
-			continue
+			return err
 		}
 
 		go func() {

@@ -118,3 +118,30 @@ func TestForwardPort_LimitsConcurrentTunnels(t *testing.T) {
 	cancel()
 	<-errCh
 }
+
+// deadTunnel fails every OpenStream, the way a QUIC connection or yamux
+// session that died under ForwardPort does.
+type deadTunnel struct{ err error }
+
+func (t *deadTunnel) OpenStream(context.Context) (port.Stream, error)   { return nil, t.err }
+func (t *deadTunnel) AcceptStream(context.Context) (port.Stream, error) { return nil, t.err }
+func (t *deadTunnel) Close() error                                      { return nil }
+
+// TestForwardPort_ReturnsWhenTunnelDies pins the auto-reconnect
+// contract: a failed OpenStream means the tunnel is gone, and Run must
+// surface that instead of silently looping forever accepting local
+// connections that go nowhere (the pre-reconnect behavior).
+func TestForwardPort_ReturnsWhenTunnelDies(t *testing.T) {
+	local, remote := net.Pipe()
+	defer remote.Close()
+
+	tunnelErr := io.ErrClosedPipe
+	listener := &fakeSeqListener{conns: []net.Conn{local}}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	err := ForwardPort{Listener: listener, Tunnel: &deadTunnel{err: tunnelErr}}.Run(ctx)
+	require.ErrorIs(t, err, tunnelErr)
+	require.NoError(t, ctx.Err(), "must return from the tunnel error, not the test timeout")
+}
