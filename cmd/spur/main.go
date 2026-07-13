@@ -45,17 +45,19 @@ func main() {
 	defer stop()
 
 	root := cli.NewClientRootCommand(cli.ClientDependencies{
-		Register:    register,
-		Connect:     connect,
-		Expose:      expose,
-		Whoami:      whoami,
-		JoinNetwork: joinNetwork,
-		Join:        join,
-		Send:        send,
-		Receive:     receive,
-		CreateRoom:  createRoom,
-		JoinRoom:    joinRoom,
-		SetLanguage: setLanguage,
+		Register:     register,
+		Connect:      connect,
+		Expose:       expose,
+		Whoami:       whoami,
+		JoinNetwork:  joinNetwork,
+		Join:         join,
+		Send:         send,
+		Receive:      receive,
+		CreateRoom:   createRoom,
+		JoinRoom:     joinRoom,
+		DesktopShare: desktopShare,
+		DesktopView:  desktopView,
+		SetLanguage:  setLanguage,
 	}, defaults)
 
 	if err := root.ExecuteContext(ctx); err != nil {

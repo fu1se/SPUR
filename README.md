@@ -292,6 +292,14 @@ After this, `localhost:2222` on the `connect` side is forwarded to port
 `22` on the remote machine. Both commands block the terminal and keep
 running until stopped (`Ctrl+C`).
 
+**Network drops are survived automatically**: if the tunnel dies (Wi-Fi
+change, brief outage, the counterpart's address changed), both sides
+print `Connection lost (...) — reconnecting in Ns...` and re-establish
+the same session with exponential backoff instead of exiting. The local
+listening port stays open across reconnects. Only the very first
+connection attempt is fatal on failure — an error there is almost always
+a typo in the code/room/server address, not an outage.
+
 > A single Ctrl+C doesn't stop things immediately — it just warns. Press
 > it again within 3 seconds to confirm (protects a long transfer/session
 > from an accidental keypress). Applies to every command, including
@@ -383,6 +391,49 @@ fresh transfer — declining doesn't trust the existing partial content,
 it's fully overwritten. This is a resume of content, not a resume of the
 session: the P2P/relay handshake still runs again from the start.
 
+A network drop *during* a transfer doesn't even need a manual re-run:
+both sides reconnect automatically (same behavior as
+`connect`/`expose`) and the retry resumes from what already arrived —
+the resume question is only ever asked on the first attempt.
+
+### Remote desktop: `desktop share` / `desktop view`
+
+Share your screen (with optional remote control) with a peer, over the
+same encrypted P2P/relay tunnel as everything else. spur doesn't
+implement screen capture itself — `desktop share` starts whichever
+native VNC server matches your session and serves it through the
+tunnel:
+
+- **x11vnc** for plain X11 sessions,
+- **wayvnc** for wlroots compositors (Sway, Hyprland, ...),
+- **gnome-remote-desktop** (via `grdctl`) for GNOME — its Wayland
+  compositor supports neither of the above, so on GNOME install
+  `gnome-remote-desktop` instead.
+
+On the machine being viewed (leave `--to` empty to print a pairing
+code, same as everywhere else; add `--view-only` to disallow remote
+mouse/keyboard control):
+
+```sh
+spur desktop share --server SERVER:4443 --stun-server SERVER:4444
+```
+
+On the viewing machine:
+
+```sh
+spur desktop view --server SERVER:4443 --stun-server SERVER:4444 --to <code>
+```
+
+`view` forwards a local loopback port (5900-5999 range) to the shared
+desktop, auto-launches the first VNC client it finds (`vncviewer`,
+`gvncviewer`, `remmina`, `krdc`) and prints the address for connecting
+manually if none is installed. If the sharing side's backend needs a
+password (gnome-remote-desktop does — it has no loopback-only mode), a
+random per-session password is generated and delivered to the viewer
+*through the encrypted tunnel*, so the only thing exchanged between the
+two humans is still just the pairing code. Rooms (`--room`) work here
+too. Linux only for now.
+
 ## Config file
 
 To avoid repeating `--server`/`--stun-server`/`--identity` in every
@@ -431,6 +482,8 @@ own process's locale.
 | `spur join-network` | Diagnostic: the same network coordination, without TUN and without root |
 | `spur send` | Send a file/directory to a peer running `spur receive` |
 | `spur receive` | Receive a file/directory from a peer running `spur send` |
+| `spur desktop share` | Share your desktop with a peer (starts a local VNC server) |
+| `spur desktop view` | View a peer's shared desktop (launches a VNC client) |
 | `spur room create` | Create a long-term, two-member room and get an invite token |
 | `spur room join` | Join a room created by someone else, using its invite token |
 | `spur lang` | Show or change the UI language (see [Language](#language)) |

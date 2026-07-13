@@ -173,6 +173,20 @@ type ClientDependencies struct {
 	// Blocks until the transfer finishes or fails unrecoverably.
 	Receive func(ctx context.Context, serverAddr, stunAddr, peerID, roomName, identityPath, destDir string, onSelfID func(selfID string), onProgress ProgressFunc, onCode OnCodeFunc, onResumeOffer ResumeOfferFunc, onVersionMismatch VersionMismatchFunc, onReconnect OnReconnectFunc) error
 
+	// DesktopShare is "spur desktop share": start a local desktop (VNC)
+	// server and serve it to the counterpart through a persistent tunnel.
+	// viewOnly disables remote input. onReady: see DesktopShareReadyFunc.
+	// Everything else: see Connect. Blocks until ctx is cancelled.
+	DesktopShare func(ctx context.Context, serverAddr, stunAddr, peerID, roomName, identityPath string, viewOnly bool, onSelfID func(selfID string), onCode OnCodeFunc, onReady DesktopShareReadyFunc, onVersionMismatch VersionMismatchFunc, onReconnect OnReconnectFunc) error
+
+	// DesktopView is "spur desktop view": forward a local loopback port
+	// to the counterpart's shared desktop through a persistent tunnel and
+	// launch a VNC viewer at it. localPort 0 picks the first free port in
+	// VNC's traditional 5900-5999 range. onReady: see
+	// DesktopViewReadyFunc. Everything else: see Connect. Blocks until
+	// ctx is cancelled.
+	DesktopView func(ctx context.Context, serverAddr, stunAddr, peerID, roomName, identityPath string, localPort int, onSelfID func(selfID string), onCode OnCodeFunc, onReady DesktopViewReadyFunc, onVersionMismatch VersionMismatchFunc, onReconnect OnReconnectFunc) error
+
 	// SetLanguage is "spur lang": persists a UI language override (or
 	// clears it, for lang == "") to the config file for future
 	// invocations. Doesn't affect the language already in effect for
@@ -269,6 +283,7 @@ func NewClientRootCommand(deps ClientDependencies, defaults ClientDefaults) *cob
 		newSendCommand(deps, defaults),
 		newReceiveCommand(deps, defaults),
 		newRoomCommand(deps, defaults),
+		newDesktopCommand(deps, defaults),
 		newLangCommand(deps, defaults),
 	)
 

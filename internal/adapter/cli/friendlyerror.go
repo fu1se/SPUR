@@ -53,6 +53,9 @@ func Explain(err error) string {
 	case strings.Contains(errText, "invalid invite token") || strings.Contains(errText, "invalid or missing invite token"):
 		return friendly(errText, c.ExplainInviteTokenHeadline, c.ExplainInviteTokenHint)
 
+	case strings.Contains(errText, "start desktop server"):
+		return friendly(errText, c.ExplainDesktopServerHeadline, c.ExplainDesktopServerHint)
+
 	case strings.Contains(errText, "address already in use"):
 		return friendly(errText, c.ExplainAddrInUseHeadline, c.ExplainAddrInUseHint)
 

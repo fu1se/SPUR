@@ -119,6 +119,27 @@ type catalog struct {
 	// reconnect.go
 	ReconnectNotice string // %v cause, %s delay
 
+	// desktop.go
+	DesktopShort            string
+	DesktopShareShort       string
+	DesktopViewShort        string
+	DesktopMissingFlags     string
+	DesktopShareToSubject   string // passed to pairingToFlagHelp
+	DesktopShareRoomSubject string // passed to roomToFlagHelp
+	DesktopViewToSubject    string
+	DesktopViewRoomSubject  string
+	DesktopShareReady       string // %s backend, %d port
+	DesktopViewReady        string // %s local addr
+	DesktopViewPassword     string // %s password
+	DesktopViewerLaunched   string // %s viewer binary
+	DesktopViewerNotFound   string
+	FlagViewOnly            string
+	FlagDesktopLocalPort    string
+
+	// friendlyerror.go (desktop)
+	ExplainDesktopServerHeadline string
+	ExplainDesktopServerHint     string
+
 	// friendlyerror.go
 	ExplainStunHeadline           string
 	ExplainStunHint               string
@@ -252,6 +273,25 @@ var ruCatalog = catalog{
 
 	ReconnectNotice: "Соединение потеряно (%v). Переподключение через %s...\n",
 
+	DesktopShort:            "Удалённый рабочий стол через spur-туннель",
+	DesktopShareShort:       "Показать свой рабочий стол собеседнику (запускает локальный VNC-сервер)",
+	DesktopViewShort:        "Подключиться к рабочему столу собеседника (запускает VNC-клиент)",
+	DesktopMissingFlags:     "desktop: укажите --server и --stun-server",
+	DesktopShareToSubject:   "того, кто будет смотреть ваш рабочий стол",
+	DesktopShareRoomSubject: "тем, кто будет смотреть ваш рабочий стол",
+	DesktopViewToSubject:    "того, чей рабочий стол смотрим",
+	DesktopViewRoomSubject:  "тем, чей рабочий стол смотрим",
+	DesktopShareReady:       "Локальный сервер рабочего стола запущен (%s, порт %d). Рабочий стол станет доступен собеседнику после подключения.\n",
+	DesktopViewReady:        "Рабочий стол собеседника доступен по адресу %s\n",
+	DesktopViewPassword:     "Пароль VNC: %s\n",
+	DesktopViewerLaunched:   "Запущен VNC-клиент: %s\n",
+	DesktopViewerNotFound:   "VNC-клиент не найден (искали vncviewer, gvncviewer, remmina, krdc) — подключитесь к адресу выше любым VNC-клиентом вручную.\n",
+	FlagViewOnly:            "только просмотр — собеседник не сможет управлять мышью и клавиатурой",
+	FlagDesktopLocalPort:    "локальный порт для VNC-клиента (по умолчанию — первый свободный из 5900-5999)",
+
+	ExplainDesktopServerHeadline: "Не удалось запустить сервер рабочего стола.",
+	ExplainDesktopServerHint:     "Нужен VNC-сервер для вашей сессии: x11vnc (X11), wayvnc (Sway/Hyprland и другие wlroots) или gnome-remote-desktop с grdctl (GNOME). Установите подходящий пакет и повторите.",
+
 	ExplainStunHeadline:           "Не удалось связаться со STUN-сервером (--stun-server).",
 	ExplainStunHint:               "Проверьте: адрес и порт указаны верно; порт открыт по UDP и на этой машине, и на сервере (файрвол/security group у облачного провайдера часто блокирует UDP по умолчанию, даже если TCP открыт).",
 	ExplainExchangeHeadline:       "Второй участник не ответил вовремя (или указан не тот собеседник).",
@@ -381,6 +421,25 @@ var enCatalog = catalog{
 	VersionMismatchWarning: "Warning: client version (%s) differs from server version (%s) — some functionality may not work correctly. Update both sides to the same version if you run into trouble.\n",
 
 	ReconnectNotice: "Connection lost (%v). Reconnecting in %s...\n",
+
+	DesktopShort:            "Remote desktop over a spur tunnel",
+	DesktopShareShort:       "Share your desktop with a counterpart (starts a local VNC server)",
+	DesktopViewShort:        "View a counterpart's desktop (launches a VNC client)",
+	DesktopMissingFlags:     "desktop: specify --server and --stun-server",
+	DesktopShareToSubject:   "whoever will view your desktop",
+	DesktopShareRoomSubject: "whoever will view your desktop",
+	DesktopViewToSubject:    "the peer whose desktop to view",
+	DesktopViewRoomSubject:  "the peer whose desktop to view",
+	DesktopShareReady:       "Local desktop server started (%s, port %d). Your desktop becomes reachable once the counterpart connects.\n",
+	DesktopViewReady:        "The counterpart's desktop is reachable at %s\n",
+	DesktopViewPassword:     "VNC password: %s\n",
+	DesktopViewerLaunched:   "Launched VNC client: %s\n",
+	DesktopViewerNotFound:   "No VNC client found (looked for vncviewer, gvncviewer, remmina, krdc) — connect to the address above with any VNC client manually.\n",
+	FlagViewOnly:            "view only — the counterpart cannot control mouse and keyboard",
+	FlagDesktopLocalPort:    "local port for the VNC client (default: first free port in 5900-5999)",
+
+	ExplainDesktopServerHeadline: "Could not start the desktop server.",
+	ExplainDesktopServerHint:     "A VNC server matching your session is required: x11vnc (X11), wayvnc (Sway/Hyprland and other wlroots) or gnome-remote-desktop with grdctl (GNOME). Install the right package and retry.",
 
 	ExplainStunHeadline:           "Couldn't reach the STUN server (--stun-server).",
 	ExplainStunHint:               "Check: the address and port are correct; the port is open over UDP both on this machine and on the server (a cloud provider's firewall/security group often blocks UDP by default even when TCP is open).",
